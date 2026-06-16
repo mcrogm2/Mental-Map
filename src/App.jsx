@@ -747,6 +747,29 @@ function computeGatheredPositions(selectedId, nodes, edges) {
 // ── Compute base sizes (full-map, module-level) ────────────────────────────────
 const { sizes: NODE_SIZES, degree: NODE_DEGREE } = computeNodeSizes(NODES, EDGES);
 
+// ── Compute initial viewBox from actual screen size ────────────────────────────
+// Done at module level so first render is already correct, no flash/jump.
+function getInitialViewBox() {
+  const W = typeof window !== "undefined" ? window.innerWidth  : 900;
+  const H = typeof window !== "undefined" ? window.innerHeight - 80 : 630; // minus header ~80px
+  const allX = NODES.map(n => n.x);
+  const allY = NODES.map(n => n.y);
+  const minX = Math.min(...allX) - 50;
+  const maxX = Math.max(...allX) + 50;
+  const minY = Math.min(...allY) - 50;
+  const maxY = Math.max(...allY) + 50;
+  const contentW = maxX - minX;
+  const contentH = maxY - minY;
+  // Scale so all content fills the screen with padding
+  const scale = Math.max(contentW / W, contentH / H);
+  const vw = W * scale;
+  const vh = H * scale;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  return `${cx - vw/2} ${cy - vh/2} ${vw} ${vh}`;
+}
+const INITIAL_VIEWBOX = getInitialViewBox();
+
 // Singleton animator — lives outside React
 const animator = new NodeAnimator();
 
@@ -907,45 +930,30 @@ export default function MentalMap() {
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onEnd);
   }, [panelWidth]);
-  const [viewBox, setViewBox] = useState("0 0 900 630");
-  const viewBoxRef = useRef([0, 0, 900, 630]);
+  const [viewBox, setViewBox] = useState(INITIAL_VIEWBOX);
+  const viewBoxRef = useRef(INITIAL_VIEWBOX.split(" ").map(Number));
   const isPinching = useRef(false);
   const lastPinchDist = useRef(null);
   const lastPinchMid = useRef(null);
 
-  // Auto-fit the full node map into the actual canvas on mount
+  // Re-fit when window resizes (rotation etc.)
   useEffect(() => {
     const fit = () => {
       const el = svgRef.current;
       if (!el) return;
       const { width, height } = el.getBoundingClientRect();
       if (!width || !height) return;
-
-      // Bounds of all nodes in SVG coordinate space
       const allX = NODES.map(n => n.x);
       const allY = NODES.map(n => n.y);
-      const minX = Math.min(...allX) - 40;
-      const maxX = Math.max(...allX) + 40;
-      const minY = Math.min(...allY) - 40;
-      const maxY = Math.max(...allY) + 40;
-      const contentW = maxX - minX;
-      const contentH = maxY - minY;
-
-      // Scale to fill the canvas, preserving aspect ratio
-      const scaleX = contentW / width;
-      const scaleY = contentH / height;
-      const scale  = Math.max(scaleX, scaleY); // use max so all nodes are visible
-      const vw = width  * scale;
-      const vh = height * scale;
-      // Center the content
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      const vb = [cx - vw/2, cy - vh/2, vw, vh];
+      const minX = Math.min(...allX) - 50, maxX = Math.max(...allX) + 50;
+      const minY = Math.min(...allY) - 50, maxY = Math.max(...allY) + 50;
+      const scale = Math.max((maxX-minX)/width, (maxY-minY)/height);
+      const vw = width * scale, vh = height * scale;
+      const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+      const vb = [cx-vw/2, cy-vh/2, vw, vh];
       viewBoxRef.current = vb;
       setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
     };
-    // Wait for layout then fit
-    requestAnimationFrame(() => requestAnimationFrame(fit));
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, []);
@@ -1066,20 +1074,10 @@ export default function MentalMap() {
   }, []);
 
   const resetViewBox = useCallback(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    if (!width || !height) { setViewBox("0 0 900 630"); return; }
-    const allX = NODES.map(n=>n.x), allY = NODES.map(n=>n.y);
-    const minX = Math.min(...allX)-40, maxX = Math.max(...allX)+40;
-    const minY = Math.min(...allY)-40, maxY = Math.max(...allY)+40;
-    const contentW = maxX-minX, contentH = maxY-minY;
-    const scale = Math.max(contentW/width, contentH/height);
-    const vw = width*scale, vh = height*scale;
-    const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
-    const vb = [cx-vw/2, cy-vh/2, vw, vh];
-    viewBoxRef.current = vb;
-    setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
+    const fresh = getInitialViewBox();
+    const parts = fresh.split(" ").map(Number);
+    viewBoxRef.current = parts;
+    setViewBox(fresh);
   }, []);
 
   // ── Selection with staged animation ───────────────────────────────────────
