@@ -856,8 +856,8 @@ export default function MentalMap() {
   const DEFAULT_PANEL_W = 340;
   const MIN_PANEL_W = 180;
   const MAX_PANEL_W = 560;
-  const COLLAPSE_THRESHOLD = 100; // drag right past this → collapse
-  const [panelWidth, setPanelWidth]       = useState(DEFAULT_PANEL_W);
+  const COLLAPSE_THRESHOLD = 100;
+  const [panelWidth, setPanelWidth]         = useState(DEFAULT_PANEL_W);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const dragRef = useRef(null);
   const preDragWidthRef = useRef(DEFAULT_PANEL_W);
@@ -908,16 +908,56 @@ export default function MentalMap() {
     window.addEventListener("touchend", onEnd);
   }, [panelWidth]);
   const [viewBox, setViewBox] = useState("0 0 900 630");
-  const viewBoxRef = useRef([0, 0, 900, 630]); // [x, y, w, h]
+  const viewBoxRef = useRef([0, 0, 900, 630]);
   const isPinching = useRef(false);
   const lastPinchDist = useRef(null);
   const lastPinchMid = useRef(null);
 
+  // Auto-fit the full node map into the actual canvas on mount
+  useEffect(() => {
+    const fit = () => {
+      const el = svgRef.current;
+      if (!el) return;
+      const { width, height } = el.getBoundingClientRect();
+      if (!width || !height) return;
+
+      // Bounds of all nodes in SVG coordinate space
+      const allX = NODES.map(n => n.x);
+      const allY = NODES.map(n => n.y);
+      const minX = Math.min(...allX) - 40;
+      const maxX = Math.max(...allX) + 40;
+      const minY = Math.min(...allY) - 40;
+      const maxY = Math.max(...allY) + 40;
+      const contentW = maxX - minX;
+      const contentH = maxY - minY;
+
+      // Scale to fill the canvas, preserving aspect ratio
+      const scaleX = contentW / width;
+      const scaleY = contentH / height;
+      const scale  = Math.max(scaleX, scaleY); // use max so all nodes are visible
+      const vw = width  * scale;
+      const vh = height * scale;
+      // Center the content
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const vb = [cx - vw/2, cy - vh/2, vw, vh];
+      viewBoxRef.current = vb;
+      setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
+    };
+    // Wait for layout then fit
+    requestAnimationFrame(() => requestAnimationFrame(fit));
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+
   const applyViewBox = useCallback((vb) => {
-    // Clamp: don't zoom out past 3x or in past 0.2x
-    const W = 900, H = 630;
-    vb[2] = Math.min(Math.max(vb[2], W * 0.2), W * 3);
-    vb[3] = Math.min(Math.max(vb[3], H * 0.2), H * 3);
+    const el = svgRef.current;
+    const rect = el ? el.getBoundingClientRect() : { width:390, height:700 };
+    // Clamp zoom: min 0.2× canvas size, max 4× canvas size
+    const minW = rect.width * 0.15, maxW = rect.width * 6;
+    const minH = rect.height * 0.15, maxH = rect.height * 6;
+    vb[2] = Math.min(Math.max(vb[2], minW), maxW);
+    vb[3] = Math.min(Math.max(vb[3], minH), maxH);
     viewBoxRef.current = [...vb];
     setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
   }, []);
@@ -991,22 +1031,55 @@ export default function MentalMap() {
     EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
     const clusterNodes = NODES.filter(n => cluster.has(n.id));
     if (!clusterNodes.length) return;
-    const xs = clusterNodes.map(n=>n.x), ys = clusterNodes.map(n=>n.y);
+
+    // Use gathered positions if animator has them
+    const getPos = (n) => {
+      const a = animator.current?.[n.id];
+      return { x: a?.x ?? n.x, y: a?.y ?? n.y };
+    };
+    const positions = clusterNodes.map(getPos);
+    const xs = positions.map(p=>p.x), ys = positions.map(p=>p.y);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const padX = 80, padY = 80;
     const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
-    const spanX = Math.max(maxX-minX+padX*2, 300);
-    const spanY = Math.max(maxY-minY+padY*2, 300);
-    // Keep aspect ratio, zoom in but not too much
-    const scale = Math.min(900/spanX, 630/spanY, 1.6);
-    const vw = 900/scale, vh = 630/scale;
+
+    const el = svgRef.current;
+    const rect = el ? el.getBoundingClientRect() : { width:390, height:700 };
+    const aspect = rect.width / rect.height;
+
+    const padX = 70, padY = 70;
+    const spanX = Math.max(maxX - minX + padX*2, 200);
+    const spanY = Math.max(maxY - minY + padY*2, 200);
+    // Fit span to canvas, then expand to fill aspect ratio
+    let vw = spanX, vh = spanY;
+    if (vw / vh > aspect) { vh = vw / aspect; } else { vw = vh * aspect; }
+    // Don't zoom in too aggressively
+    const maxZoom = 1.8;
+    const curVw = viewBoxRef.current[2];
+    const minVw = curVw / maxZoom;
+    if (vw < minVw) { vw = minVw; vh = vw / aspect; }
+
     const vx = cx - vw/2, vy = cy - vh/2;
+    const vb = [vx, vy, vw, vh];
+    viewBoxRef.current = vb;
     setViewBox(`${vx} ${vy} ${vw} ${vh}`);
   }, []);
 
   const resetViewBox = useCallback(() => {
-    setViewBox("0 0 900 630");
+    const el = svgRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    if (!width || !height) { setViewBox("0 0 900 630"); return; }
+    const allX = NODES.map(n=>n.x), allY = NODES.map(n=>n.y);
+    const minX = Math.min(...allX)-40, maxX = Math.max(...allX)+40;
+    const minY = Math.min(...allY)-40, maxY = Math.max(...allY)+40;
+    const contentW = maxX-minX, contentH = maxY-minY;
+    const scale = Math.max(contentW/width, contentH/height);
+    const vw = width*scale, vh = height*scale;
+    const cx = (minX+maxX)/2, cy = (minY+maxY)/2;
+    const vb = [cx-vw/2, cy-vh/2, vw, vh];
+    viewBoxRef.current = vb;
+    setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
   }, []);
 
   // ── Selection with staged animation ───────────────────────────────────────
@@ -1017,6 +1090,8 @@ export default function MentalMap() {
     setTab("overview");
     setInsight(insightCache.current[id] || "");
     setBreadcrumb(prev => [...prev.filter(x=>x!==id).slice(-3), id]);
+    // On mobile, start with panel collapsed so map stays visible
+    if (window.innerWidth < 768) setPanelCollapsed(true);
     animator.stopBreathe(); // stop any previous breathe immediately
 
     const cluster = new Set([id]);
