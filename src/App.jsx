@@ -371,6 +371,8 @@ PRACTICES["distress-tol"] = {
     }
   ]
 };
+
+const NODES = [
   {id:"cbt",    label:"CBT",           full:"Cognitive Behavioral Therapy",   type:"modality",  x:120,y:155,
    summary:"A structured, goal-oriented therapy focusing on the link between thoughts, feelings, and behaviors.",
    content:"CBT is based on the idea that negative thought cycles trap us in distress. By identifying and restructuring those patterns we change how we feel and act.\n\nCore tools: thought records, behavioral activation, cognitive restructuring, exposure hierarchies.",
