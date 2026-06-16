@@ -1419,42 +1419,18 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
         </div>
 
-        {/* Drag divider — wider touch target, collapses panel on drag right */}
+        {/* Drag divider — only when node selected AND panel open */}
         {selectedNode && !panelCollapsed && (
           <div
             onMouseDown={onDividerMouseDown}
             onTouchStart={onDividerTouchStart}
             style={{
-              width: 28,           // wide invisible touch zone
-              flexShrink: 0,
-              cursor: "col-resize",
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-              background: "transparent",
+              width: 24, flexShrink: 0, cursor: "col-resize", zIndex: 25,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "#0d1325", borderLeft: "1px solid #1a2540",
             }}
           >
-            {/* Visible line + grip */}
-            <div style={{
-              position: "absolute",
-              left: "50%", top: 0, bottom: 0,
-              width: 1,
-              background: "#1a2540",
-              transform: "translateX(-50%)",
-            }}/>
-            <div style={{
-              position: "absolute",
-              background: "#0d1325",
-              border: "1px solid #1e2a3a",
-              borderRadius: 6,
-              padding: "6px 3px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 3,
-              zIndex: 1,
-            }}>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
               {[0,1,2,3].map(i=>(
                 <div key={i} style={{width:3,height:3,borderRadius:"50%",background:"#475569"}}/>
               ))}
@@ -1462,49 +1438,40 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           </div>
         )}
 
-        {/* Collapsed peek tab — drag or tap to reopen */}
+        {/* Peek tab — only when node selected AND panel collapsed */}
         {selectedNode && panelCollapsed && (
           <div
             onClick={() => setPanelCollapsed(false)}
-            onTouchStart={onDividerTouchStart}
             style={{
-              width: 22,
-              flexShrink: 0,
-              cursor: "pointer",
-              zIndex: 25,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "#0d1325",
-              borderLeft: "1px solid #1a2540",
+              width: 28, flexShrink: 0, cursor: "pointer", zIndex: 25,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "#0d1325", borderLeft: "1px solid #1a2540",
             }}
           >
-            <div style={{
-              display:"flex", flexDirection:"column", gap:3, alignItems:"center"
-            }}>
-              <span style={{fontSize:10, color:"#475569", writingMode:"vertical-rl", letterSpacing:".05em", textTransform:"uppercase", fontWeight:600}}>
-                {selectedNode.label.replace("\n"," ")}
-              </span>
-              <div style={{width:2,height:2,borderRadius:"50%",background:"#475569"}}/>
-              <span style={{fontSize:14, color:"#475569"}}>‹</span>
-            </div>
+            <span style={{fontSize:16, color:"#7F77DD"}}>‹</span>
           </div>
         )}
 
-        {/* Detail Panel */}
-        <div style={{
-          width: panelCollapsed ? 0 : panelWidth,
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
-          background: "#0d1325",
-          overflow: "hidden",
-          transition: panelCollapsed ? "width .3s ease" : "none",
-          zIndex: 20,
-          minHeight: 0,
-        }}>
-          <div style={{width: panelWidth, display:"flex", flexDirection:"column", height:"100%", minHeight:0}}>
-            {selectedNode && <>
+        {/* Detail Panel — zero width when no node or collapsed */}
+        {selectedNode && (
+          <div style={{
+            width: panelCollapsed ? 0 : panelWidth,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            background: "#0d1325",
+            overflow: "hidden",
+            transition: "width .3s ease",
+            zIndex: 20,
+            minHeight: 0,
+          }}>
+            <div style={{
+              width: panelWidth,
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+              minHeight: 0,
+            }}>
               <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0d1325",zIndex:2}}>
                 <button style={{position:"absolute",top:14,right:14,background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:18,lineHeight:1,fontFamily:"inherit"}} onClick={clearAll}>✕</button>
                 <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:COLORS[selectedNode.type]?.fill,marginBottom:3}}>{COLORS[selectedNode.type]?.typeLabel}</div>
@@ -1614,10 +1581,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                   </div>
                 )}
               </div>{/* end panel body outer */}
-            </>}
-          </div>
-        </div>
-      </div>
+            </div>{/* end inner panel */}
+          </div>{/* end detail panel */}
+        )}
+      </div>{/* end body */}
     </div>
   );
 }
