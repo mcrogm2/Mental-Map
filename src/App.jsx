@@ -1580,11 +1580,11 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                     }}/>
                   </div>
                 )}
-              </div>{/* end panel body outer */}
-            </div>{/* end inner panel */}
-          </div>{/* end detail panel */}
+              </div>
+            </div>
+          </div>
         )}
-      </div>{/* end body */}
+      </div>
     </div>
   );
 }
