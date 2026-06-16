@@ -759,6 +759,87 @@ export default function MentalMap() {
   const [loading, setLoading]     = useState(false);
   const insightCache = useRef({});
   const [tooltip, setTooltip]     = useState(null);
+
+  // ── Panel manual scroll ────────────────────────────────────────────────────
+  const panelBodyRef    = useRef(null);
+  const panelContentRef = useRef(null);
+  const [panelScrollY, setPanelScrollY]         = useState(0);
+  const [panelMaxScroll, setPanelMaxScroll]     = useState(0);
+  const [panelScrollThumb, setPanelScrollThumb] = useState(1);
+  const [panelScrolling, setPanelScrolling]     = useState(false);
+  const panelTouchRef   = useRef(null);
+  const panelScrollTimer = useRef(null);
+  const panelRafRef     = useRef(null);
+
+  const clampScroll = (y, max) => Math.min(0, Math.max(-max, y));
+
+  // Remeasure whenever content changes
+  useEffect(() => {
+    setPanelScrollY(0);
+    const measure = () => {
+      if (!panelBodyRef.current || !panelContentRef.current) return;
+      const bodyH    = panelBodyRef.current.offsetHeight;
+      const contentH = panelContentRef.current.scrollHeight || panelContentRef.current.offsetHeight;
+      const max = Math.max(0, contentH - bodyH);
+      setPanelMaxScroll(max);
+      setPanelScrollThumb(max > 0 ? Math.min(1, bodyH / contentH) : 1);
+    };
+    // Two frames: first lets React render, second lets images/fonts settle
+    requestAnimationFrame(() => requestAnimationFrame(measure));
+  }, [tab, selected, insight, loading]);
+
+  const onPanelTouchStart = useCallback((e) => {
+    if (e.touches.length !== 1) return;
+    cancelAnimationFrame(panelRafRef.current);
+    const touch = e.touches[0];
+    panelTouchRef.current = {
+      startY: touch.clientY,
+      startScrollY: panelScrollY,
+      lastY: touch.clientY,
+      lastT: Date.now(),
+      vel: 0,
+    };
+    setPanelScrolling(true);
+    clearTimeout(panelScrollTimer.current);
+  }, [panelScrollY]);
+
+  const onPanelTouchMove = useCallback((e) => {
+    if (!panelTouchRef.current || e.touches.length !== 1) return;
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const ref   = panelTouchRef.current;
+    const now   = Date.now();
+    const dy    = touch.clientY - ref.startY;
+    ref.vel     = (touch.clientY - ref.lastY) / Math.max(1, now - ref.lastT);
+    ref.lastY   = touch.clientY;
+    ref.lastT   = now;
+    setPanelScrollY(clampScroll(ref.startScrollY + dy, panelMaxScroll));
+  }, [panelMaxScroll]);
+
+  const onPanelTouchEnd = useCallback(() => {
+    if (!panelTouchRef.current) return;
+    let vel = panelTouchRef.current.vel * 16;
+    const momentum = () => {
+      vel *= 0.92;
+      if (Math.abs(vel) < 0.5) { setPanelScrolling(false); return; }
+      setPanelScrollY(prev => {
+        const next = clampScroll(prev + vel, panelMaxScroll);
+        if (next === prev) { setPanelScrolling(false); return prev; }
+        return next;
+      });
+      panelRafRef.current = requestAnimationFrame(momentum);
+    };
+    panelRafRef.current = requestAnimationFrame(momentum);
+    panelScrollTimer.current = setTimeout(() => setPanelScrolling(false), 1200);
+  }, [panelMaxScroll]);
+
+  const onPanelWheel = useCallback((e) => {
+    e.stopPropagation();
+    setPanelScrollY(prev => clampScroll(prev - e.deltaY * 0.8, panelMaxScroll));
+    setPanelScrolling(true);
+    clearTimeout(panelScrollTimer.current);
+    panelScrollTimer.current = setTimeout(() => setPanelScrolling(false), 600);
+  }, [panelMaxScroll]);
   // Animated node state (updated by animator outside React render)
   const [animState, setAnimState] = useState(null);
   const svgRef = useRef(null);
@@ -1024,11 +1105,31 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
   ];
 
   return (
-    <div style={{fontFamily:"'Inter','Helvetica Neue',sans-serif",background:"#0a0f1e",minHeight:"100vh",display:"flex",flexDirection:"column",color:"#e2e8f0"}}>
+    <div style={{fontFamily:"'Inter','Helvetica Neue',sans-serif",background:"#0a0f1e",height:"100vh",width:"100vw",display:"flex",flexDirection:"column",color:"#e2e8f0",overflow:"hidden",position:"fixed",top:0,left:0}}>
       <style>{`
         @keyframes spin { to { transform:rotate(360deg) } }
-        .map-svg { transition: all 0s; }
         svg text { pointer-events:none; user-select:none; }
+        * { box-sizing: border-box; }
+        .panel-scroll {
+          flex: 1 1 0;
+          overflow-y: auto !important;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          touch-action: pan-y pinch-zoom;
+          min-height: 0;
+          padding: 16px;
+        }
+        .panel-scroll::-webkit-scrollbar { width: 4px; }
+        .panel-scroll::-webkit-scrollbar-track { background: transparent; }
+        .panel-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .panel-outer {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-height: 0;
+          overflow: hidden;
+        }
       `}</style>
 
       {/* Header */}
@@ -1219,23 +1320,6 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               Click any node to explore · <span style={{color:"#378ADD"}}>●</span> = has guided practice
             </div>
           )}
-
-          {/* Zoom controls */}
-          <div style={{position:"absolute",bottom:14,right:14,display:"flex",flexDirection:"column",gap:6,zIndex:10}}>
-            {[
-              { label:"+", action: () => { const vb=[...viewBoxRef.current]; const cx=vb[0]+vb[2]/2,cy=vb[1]+vb[3]/2; vb[2]*=0.8;vb[3]*=0.8; vb[0]=cx-vb[2]/2;vb[1]=cy-vb[3]/2; applyViewBox(vb); }},
-              { label:"−", action: () => { const vb=[...viewBoxRef.current]; const cx=vb[0]+vb[2]/2,cy=vb[1]+vb[3]/2; vb[2]*=1.25;vb[3]*=1.25; vb[0]=cx-vb[2]/2;vb[1]=cy-vb[3]/2; applyViewBox(vb); }},
-              { label:"⊡", action: () => applyViewBox([0,0,900,630]) },
-            ].map(({label,action})=>(
-              <button key={label} onClick={action} style={{
-                width:34,height:34,borderRadius:8,
-                background:"rgba(13,19,37,0.9)",border:"1px solid #1a2540",
-                color:"#94a3b8",fontSize:label==="⊡"?16:18,cursor:"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontFamily:"inherit",backdropFilter:"blur(6px)"
-              }}>{label}</button>
-            ))}
-          </div>
         </div>
 
         {/* Drag divider handle — only visible when panel is open */}
@@ -1296,16 +1380,31 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 </div>
               </div>
 
-              {/* Panel body — this MUST be the only scrolling element */}
-              <div style={{
-                flex: 1,
-                overflowY: "scroll",
-                overflowX: "hidden",
-                WebkitOverflowScrolling: "touch",
-                padding: 16,
-                minHeight: 0,         // critical for flex scroll to work
-                boxSizing: "border-box",
-              }}>
+              {/* Panel body — manual touch scroll for mobile Safari compatibility */}
+              <div
+                ref={panelBodyRef}
+                onWheel={onPanelWheel}
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  position: "relative",
+                  minHeight: 0,
+                }}
+              >
+                <div
+                  ref={panelContentRef}
+                  style={{
+                    position: "absolute",
+                    top: 0, left: 0, right: 0,
+                    transform: `translateY(${panelScrollY}px)`,
+                    padding: 16,
+                    boxSizing: "border-box",
+                    willChange: "transform",
+                  }}
+                  onTouchStart={onPanelTouchStart}
+                  onTouchMove={onPanelTouchMove}
+                  onTouchEnd={onPanelTouchEnd}
+                >
                 {tab==="overview" && (
                   <div>
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
@@ -1354,7 +1453,27 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                     }
                   </div>
                 )}
-              </div>
+                {/* Bottom padding so last content isn't flush against edge */}
+                <div style={{height:32}}/>
+                </div>{/* end content */}
+
+                {/* Scrollbar track indicator */}
+                {panelScrollThumb > 0 && panelScrollThumb < 1 && (
+                  <div style={{position:"absolute",right:3,top:0,bottom:0,width:3,pointerEvents:"none"}}>
+                    <div style={{
+                      position:"absolute",
+                      right:0,
+                      width:3,
+                      borderRadius:3,
+                      background:"#334155",
+                      top: `${(-panelScrollY / panelMaxScroll) * (100 - panelScrollThumb*100)}%`,
+                      height: `${panelScrollThumb * 100}%`,
+                      opacity: panelScrolling ? 1 : 0,
+                      transition: "opacity 0.5s ease",
+                    }}/>
+                  </div>
+                )}
+              </div>{/* end panel body outer */}
             </>}
           </div>
         </div>
