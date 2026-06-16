@@ -773,6 +773,83 @@ export default function MentalMap() {
 
   // ── Cluster centering ──────────────────────────────────────────────────────
   const [viewBox, setViewBox] = useState("0 0 900 630");
+  const viewBoxRef = useRef([0, 0, 900, 630]); // [x, y, w, h]
+  const isPinching = useRef(false);
+  const lastPinchDist = useRef(null);
+  const lastPinchMid = useRef(null);
+
+  const applyViewBox = useCallback((vb) => {
+    // Clamp: don't zoom out past 3x or in past 0.2x
+    const W = 900, H = 630;
+    vb[2] = Math.min(Math.max(vb[2], W * 0.2), W * 3);
+    vb[3] = Math.min(Math.max(vb[3], H * 0.2), H * 3);
+    viewBoxRef.current = [...vb];
+    setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
+  }, []);
+
+  // Scroll wheel zoom
+  const onWheel = useCallback((e) => {
+    e.preventDefault();
+    const vb = [...viewBoxRef.current];
+    const factor = e.deltaY > 0 ? 1.1 : 0.9;
+    const svg = svgRef.current;
+    const rect = svg.getBoundingClientRect();
+    // Mouse position in SVG coords
+    const mx = vb[0] + (e.clientX - rect.left) / rect.width  * vb[2];
+    const my = vb[1] + (e.clientY - rect.top)  / rect.height * vb[3];
+    vb[2] *= factor; vb[3] *= factor;
+    vb[0] = mx - (e.clientX - rect.left) / rect.width  * vb[2];
+    vb[1] = my - (e.clientY - rect.top)  / rect.height * vb[3];
+    applyViewBox(vb);
+  }, [applyViewBox]);
+
+  // Pinch zoom (mobile)
+  const onTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      isPinching.current = true;
+      const t = e.touches;
+      lastPinchDist.current = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+      lastPinchMid.current = { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 };
+    } else {
+      isPinching.current = false;
+    }
+  }, []);
+
+  const onTouchMove = useCallback((e) => {
+    if (!isPinching.current || e.touches.length !== 2) return;
+    e.preventDefault();
+    const t = e.touches;
+    const dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+    const mid  = { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 };
+    const factor = lastPinchDist.current / dist;
+    const vb = [...viewBoxRef.current];
+    const svg = svgRef.current;
+    const rect = svg.getBoundingClientRect();
+    const mx = vb[0] + (mid.x - rect.left) / rect.width  * vb[2];
+    const my = vb[1] + (mid.y - rect.top)  / rect.height * vb[3];
+    vb[2] *= factor; vb[3] *= factor;
+    vb[0] = mx - (mid.x - rect.left) / rect.width  * vb[2];
+    vb[1] = my - (mid.y - rect.top)  / rect.height * vb[3];
+    applyViewBox(vb);
+    lastPinchDist.current = dist;
+    lastPinchMid.current  = mid;
+  }, [applyViewBox]);
+
+  const onTouchEnd = useCallback(() => { isPinching.current = false; }, []);
+
+  // Attach wheel listener as non-passive so we can preventDefault
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [onWheel]);
+
+  // Keep viewBoxRef in sync when viewBox changes externally (cluster recentering)
+  useEffect(() => {
+    const parts = viewBox.split(" ").map(Number);
+    if (parts.length === 4) viewBoxRef.current = parts;
+  }, [viewBox]);
 
   const recenterCluster = useCallback((id) => {
     const cluster = new Set([id]);
@@ -941,7 +1018,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         <div style={{flex:1,position:"relative",overflow:"hidden"}}>
           <svg ref={svgRef}
             viewBox={viewBox}
-            style={{width:"100%",height:"100%",display:"block",transition:"viewBox 0.5s ease"}}
+            style={{width:"100%",height:"100%",display:"block"}}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
           >
             <defs>
               {/* Glow filters per type */}
@@ -1108,6 +1188,23 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               Click any node to explore · <span style={{color:"#378ADD"}}>●</span> = has guided practice
             </div>
           )}
+
+          {/* Zoom controls */}
+          <div style={{position:"absolute",bottom:14,right:14,display:"flex",flexDirection:"column",gap:6,zIndex:10}}>
+            {[
+              { label:"+", action: () => { const vb=[...viewBoxRef.current]; const cx=vb[0]+vb[2]/2,cy=vb[1]+vb[3]/2; vb[2]*=0.8;vb[3]*=0.8; vb[0]=cx-vb[2]/2;vb[1]=cy-vb[3]/2; applyViewBox(vb); }},
+              { label:"−", action: () => { const vb=[...viewBoxRef.current]; const cx=vb[0]+vb[2]/2,cy=vb[1]+vb[3]/2; vb[2]*=1.25;vb[3]*=1.25; vb[0]=cx-vb[2]/2;vb[1]=cy-vb[3]/2; applyViewBox(vb); }},
+              { label:"⊡", action: () => applyViewBox([0,0,900,630]) },
+            ].map(({label,action})=>(
+              <button key={label} onClick={action} style={{
+                width:34,height:34,borderRadius:8,
+                background:"rgba(13,19,37,0.9)",border:"1px solid #1a2540",
+                color:"#94a3b8",fontSize:label==="⊡"?16:18,cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontFamily:"inherit",backdropFilter:"blur(6px)"
+              }}>{label}</button>
+            ))}
+          </div>
         </div>
 
         {/* Detail Panel — fixed size, outside SVG zoom */}
@@ -1124,7 +1221,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           position: "relative",
           zIndex: 20,  // always on top of canvas
         }}>
-          <div style={{width:340,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+          <div style={{width:340,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden",minHeight:0}}>
             {selectedNode && <>
               <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0d1325",zIndex:2}}>
                 <button style={{position:"absolute",top:14,right:14,background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:18,lineHeight:1,fontFamily:"inherit"}} onClick={clearAll}>✕</button>
