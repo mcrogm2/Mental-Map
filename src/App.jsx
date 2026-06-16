@@ -856,31 +856,54 @@ export default function MentalMap() {
   const DEFAULT_PANEL_W = 340;
   const MIN_PANEL_W = 180;
   const MAX_PANEL_W = 560;
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_W);
-  const dragRef = useRef(null); // { startX, startW }
+  const COLLAPSE_THRESHOLD = 100; // drag right past this → collapse
+  const [panelWidth, setPanelWidth]       = useState(DEFAULT_PANEL_W);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const dragRef = useRef(null);
+  const preDragWidthRef = useRef(DEFAULT_PANEL_W);
 
   const onDividerMouseDown = useCallback((e) => {
     e.preventDefault();
+    preDragWidthRef.current = panelWidth;
     dragRef.current = { startX: e.clientX, startW: panelWidth };
     const onMove = (ev) => {
-      const dx = dragRef.current.startX - ev.clientX; // drag left = wider panel
-      const newW = Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, dragRef.current.startW + dx));
-      setPanelWidth(newW);
+      const dx = dragRef.current.startX - ev.clientX;
+      const raw = dragRef.current.startW + dx;
+      if (raw < -COLLAPSE_THRESHOLD) {
+        setPanelCollapsed(true);
+        setPanelWidth(DEFAULT_PANEL_W);
+      } else {
+        setPanelCollapsed(false);
+        setPanelWidth(Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, raw)));
+      }
     };
-    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [panelWidth]);
 
   const onDividerTouchStart = useCallback((e) => {
-    const t = e.touches[0];
-    dragRef.current = { startX: t.clientX, startW: panelWidth };
+    preDragWidthRef.current = panelWidth;
+    dragRef.current = { startX: e.touches[0].clientX, startW: panelWidth };
     const onMove = (ev) => {
+      ev.preventDefault();
       const dx = dragRef.current.startX - ev.touches[0].clientX;
-      const newW = Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, dragRef.current.startW + dx));
-      setPanelWidth(newW);
+      const raw = dragRef.current.startW + dx;
+      if (raw < -COLLAPSE_THRESHOLD) {
+        setPanelCollapsed(true);
+        setPanelWidth(DEFAULT_PANEL_W);
+      } else {
+        setPanelCollapsed(false);
+        setPanelWidth(Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, raw)));
+      }
     };
-    const onEnd = () => { window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); };
+    const onEnd = () => {
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+    };
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onEnd);
   }, [panelWidth]);
@@ -1046,6 +1069,7 @@ export default function MentalMap() {
     setBreadcrumb([]);
     setInsight("");
     setTooltip(null);
+    setPanelCollapsed(false);
     animator.stopBreathe();
 
     // Reset all nodes to base state including original positions
@@ -1322,47 +1346,90 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
         </div>
 
-        {/* Drag divider handle — only visible when panel is open */}
-        {selectedNode && (
+        {/* Drag divider — wider touch target, collapses panel on drag right */}
+        {selectedNode && !panelCollapsed && (
           <div
             onMouseDown={onDividerMouseDown}
             onTouchStart={onDividerTouchStart}
             style={{
-              width: 6,
+              width: 28,           // wide invisible touch zone
               flexShrink: 0,
-              background: "transparent",
-              borderLeft: "1px solid #1a2540",
               cursor: "col-resize",
               zIndex: 25,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               position: "relative",
+              background: "transparent",
             }}
           >
-            {/* Grip dots */}
-            <div style={{display:"flex",flexDirection:"column",gap:3,position:"absolute"}}>
-              {[0,1,2].map(i=>(
-                <div key={i} style={{width:3,height:3,borderRadius:"50%",background:"#334155"}}/>
+            {/* Visible line + grip */}
+            <div style={{
+              position: "absolute",
+              left: "50%", top: 0, bottom: 0,
+              width: 1,
+              background: "#1a2540",
+              transform: "translateX(-50%)",
+            }}/>
+            <div style={{
+              position: "absolute",
+              background: "#0d1325",
+              border: "1px solid #1e2a3a",
+              borderRadius: 6,
+              padding: "6px 3px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+              zIndex: 1,
+            }}>
+              {[0,1,2,3].map(i=>(
+                <div key={i} style={{width:3,height:3,borderRadius:"50%",background:"#475569"}}/>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Collapsed peek tab — drag or tap to reopen */}
+        {selectedNode && panelCollapsed && (
+          <div
+            onClick={() => setPanelCollapsed(false)}
+            onTouchStart={onDividerTouchStart}
+            style={{
+              width: 22,
+              flexShrink: 0,
+              cursor: "pointer",
+              zIndex: 25,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#0d1325",
+              borderLeft: "1px solid #1a2540",
+            }}
+          >
+            <div style={{
+              display:"flex", flexDirection:"column", gap:3, alignItems:"center"
+            }}>
+              <span style={{fontSize:10, color:"#475569", writingMode:"vertical-rl", letterSpacing:".05em", textTransform:"uppercase", fontWeight:600}}>
+                {selectedNode.label.replace("\n"," ")}
+              </span>
+              <div style={{width:2,height:2,borderRadius:"50%",background:"#475569"}}/>
+              <span style={{fontSize:14, color:"#475569"}}>‹</span>
             </div>
           </div>
         )}
 
         {/* Detail Panel */}
         <div style={{
-          width: selectedNode ? panelWidth : 0,
+          width: panelCollapsed ? 0 : panelWidth,
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           background: "#0d1325",
-          borderLeft: selectedNode ? "none" : undefined,
           overflow: "hidden",
-          transition: selectedNode ? "none" : "width .25s ease",
+          transition: panelCollapsed ? "width .3s ease" : "none",
           zIndex: 20,
           minHeight: 0,
         }}>
-          {/* Inner — exact panel width, flex column, scrollable body */}
           <div style={{width: panelWidth, display:"flex", flexDirection:"column", height:"100%", minHeight:0}}>
             {selectedNode && <>
               <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0d1325",zIndex:2}}>
