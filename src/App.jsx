@@ -771,7 +771,38 @@ export default function MentalMap() {
     return () => { unsub(); animator.destroy(); };
   }, []);
 
-  // ── Cluster centering ──────────────────────────────────────────────────────
+  // ── Draggable panel width ──────────────────────────────────────────────────
+  const DEFAULT_PANEL_W = 340;
+  const MIN_PANEL_W = 180;
+  const MAX_PANEL_W = 560;
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_W);
+  const dragRef = useRef(null); // { startX, startW }
+
+  const onDividerMouseDown = useCallback((e) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startW: panelWidth };
+    const onMove = (ev) => {
+      const dx = dragRef.current.startX - ev.clientX; // drag left = wider panel
+      const newW = Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, dragRef.current.startW + dx));
+      setPanelWidth(newW);
+    };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [panelWidth]);
+
+  const onDividerTouchStart = useCallback((e) => {
+    const t = e.touches[0];
+    dragRef.current = { startX: t.clientX, startW: panelWidth };
+    const onMove = (ev) => {
+      const dx = dragRef.current.startX - ev.touches[0].clientX;
+      const newW = Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, dragRef.current.startW + dx));
+      setPanelWidth(newW);
+    };
+    const onEnd = () => { window.removeEventListener("touchmove", onMove); window.removeEventListener("touchend", onEnd); };
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+  }, [panelWidth]);
   const [viewBox, setViewBox] = useState("0 0 900 630");
   const viewBoxRef = useRef([0, 0, 900, 630]); // [x, y, w, h]
   const isPinching = useRef(false);
@@ -1012,10 +1043,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       </div>
 
       {/* Body */}
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+      <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
 
         {/* Canvas */}
-        <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+        <div style={{flex:1,position:"relative",overflow:"hidden",minWidth:0}}>
           <svg ref={svgRef}
             viewBox={viewBox}
             style={{width:"100%",height:"100%",display:"block"}}
@@ -1207,28 +1238,55 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           </div>
         </div>
 
-        {/* Detail Panel — fixed size, outside SVG zoom */}
+        {/* Drag divider handle — only visible when panel is open */}
+        {selectedNode && (
+          <div
+            onMouseDown={onDividerMouseDown}
+            onTouchStart={onDividerTouchStart}
+            style={{
+              width: 6,
+              flexShrink: 0,
+              background: "transparent",
+              borderLeft: "1px solid #1a2540",
+              cursor: "col-resize",
+              zIndex: 25,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+            }}
+          >
+            {/* Grip dots */}
+            <div style={{display:"flex",flexDirection:"column",gap:3,position:"absolute"}}>
+              {[0,1,2].map(i=>(
+                <div key={i} style={{width:3,height:3,borderRadius:"50%",background:"#334155"}}/>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Detail Panel */}
         <div style={{
-          width: selectedNode ? 340 : 0,
-          minWidth: selectedNode ? 340 : 0,
+          width: selectedNode ? panelWidth : 0,
           flexShrink: 0,
-          overflow: "hidden",
-          transition: "width .25s ease, min-width .25s ease",
-          background: "#0d1325",
-          borderLeft: "1px solid #1a2540",
           display: "flex",
           flexDirection: "column",
-          position: "relative",
-          zIndex: 20,  // always on top of canvas
+          background: "#0d1325",
+          borderLeft: selectedNode ? "none" : undefined,
+          overflow: "hidden",
+          transition: selectedNode ? "none" : "width .25s ease",
+          zIndex: 20,
+          minHeight: 0,
         }}>
-          <div style={{width:340,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden",minHeight:0}}>
+          {/* Inner — exact panel width, flex column, scrollable body */}
+          <div style={{width: panelWidth, display:"flex", flexDirection:"column", height:"100%", minHeight:0}}>
             {selectedNode && <>
               <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0d1325",zIndex:2}}>
                 <button style={{position:"absolute",top:14,right:14,background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:18,lineHeight:1,fontFamily:"inherit"}} onClick={clearAll}>✕</button>
                 <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:COLORS[selectedNode.type]?.fill,marginBottom:3}}>{COLORS[selectedNode.type]?.typeLabel}</div>
                 <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",lineHeight:1.25,marginBottom:12,paddingRight:24,letterSpacing:"-0.02em"}}>{selectedNode.full||selectedNode.label.replace("\n"," ")}</div>
-                {/* Sticky tabs */}
-                <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto",position:"sticky",top:0,background:"#0d1325",zIndex:3}}>
+                {/* Tabs */}
+                <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto"}}>
                   {["overview", ...(hasHistory?["history"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
                     <button key={t} style={{flexShrink:0,padding:"8px 10px",background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#7F77DD":"transparent"}`,color:tab===t?"#e2e8f0":"#64748b",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,fontFamily:"inherit",whiteSpace:"nowrap"}}
                       onClick={()=>setTab(t)}>
@@ -1238,8 +1296,16 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 </div>
               </div>
 
-              {/* Scrollable panel body */}
-              <div style={{flex:1,overflowY:"auto",padding:16,WebkitOverflowScrolling:"touch"}}>
+              {/* Panel body — this MUST be the only scrolling element */}
+              <div style={{
+                flex: 1,
+                overflowY: "scroll",
+                overflowX: "hidden",
+                WebkitOverflowScrolling: "touch",
+                padding: 16,
+                minHeight: 0,         // critical for flex scroll to work
+                boxSizing: "border-box",
+              }}>
                 {tab==="overview" && (
                   <div>
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
