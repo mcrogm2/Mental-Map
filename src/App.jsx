@@ -888,9 +888,11 @@ export default function MentalMap() {
   const onDividerMouseDown = useCallback((e) => {
     e.preventDefault();
     preDragWidthRef.current = panelWidth;
-    dragRef.current = { startX: e.clientX, startW: panelWidth };
+    dragRef.current = { startX: e.clientX, startW: panelWidth, moved: false };
     const onMove = (ev) => {
       const dx = dragRef.current.startX - ev.clientX;
+      if (Math.abs(dx) > 4) dragRef.current.moved = true;
+      if (!dragRef.current.moved) return;
       const raw = dragRef.current.startW + dx;
       if (raw < -COLLAPSE_THRESHOLD) {
         setPanelCollapsed(true);
@@ -901,6 +903,10 @@ export default function MentalMap() {
       }
     };
     const onUp = () => {
+      // If barely moved = tap → toggle collapse
+      if (!dragRef.current.moved) {
+        setPanelCollapsed(prev => !prev);
+      }
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -910,10 +916,12 @@ export default function MentalMap() {
 
   const onDividerTouchStart = useCallback((e) => {
     preDragWidthRef.current = panelWidth;
-    dragRef.current = { startX: e.touches[0].clientX, startW: panelWidth };
+    dragRef.current = { startX: e.touches[0].clientX, startW: panelWidth, moved: false };
     const onMove = (ev) => {
       ev.preventDefault();
       const dx = dragRef.current.startX - ev.touches[0].clientX;
+      if (Math.abs(dx) > 6) dragRef.current.moved = true;
+      if (!dragRef.current.moved) return;
       const raw = dragRef.current.startW + dx;
       if (raw < -COLLAPSE_THRESHOLD) {
         setPanelCollapsed(true);
@@ -924,6 +932,10 @@ export default function MentalMap() {
       }
     };
     const onEnd = () => {
+      // If barely moved = tap → toggle collapse
+      if (!dragRef.current.moved) {
+        setPanelCollapsed(prev => !prev);
+      }
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
     };
@@ -1419,7 +1431,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
         </div>
 
-        {/* Drag divider — only when node selected AND panel open */}
+        {/* Drag divider — tap to toggle, drag to resize */}
         {selectedNode && !panelCollapsed && (
           <div
             onMouseDown={onDividerMouseDown}
@@ -1428,6 +1440,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               width: 24, flexShrink: 0, cursor: "col-resize", zIndex: 25,
               display: "flex", alignItems: "center", justifyContent: "center",
               background: "#0d1325", borderLeft: "1px solid #1a2540",
+              userSelect: "none",
             }}
           >
             <div style={{display:"flex",flexDirection:"column",gap:3}}>
@@ -1438,14 +1451,16 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           </div>
         )}
 
-        {/* Peek tab — only when node selected AND panel collapsed */}
+        {/* Peek tab — tap or drag to reopen */}
         {selectedNode && panelCollapsed && (
           <div
-            onClick={() => setPanelCollapsed(false)}
+            onMouseDown={onDividerMouseDown}
+            onTouchStart={onDividerTouchStart}
             style={{
               width: 28, flexShrink: 0, cursor: "pointer", zIndex: 25,
               display: "flex", alignItems: "center", justifyContent: "center",
               background: "#0d1325", borderLeft: "1px solid #1a2540",
+              userSelect: "none",
             }}
           >
             <span style={{fontSize:16, color:"#7F77DD"}}>‹</span>
