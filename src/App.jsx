@@ -26,8 +26,8 @@ class NodeAnimator {
   init(nodes, sizes) {
     nodes.forEach(n => {
       const r = sizes[n.id] ?? 22;
-      this.targets[n.id]  = { opacity:1, radius:r, glow:0, pulse:0 };
-      this.current[n.id]  = { opacity:1, radius:r, glow:0, pulse:0 };
+      this.targets[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:n.x, y:n.y };
+      this.current[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:n.x, y:n.y };
     });
   }
   setTargets(newTargets) {
@@ -72,8 +72,8 @@ class NodeAnimator {
         const tgt = this.targets[id];
         // Skip glow for the breathing node — breathe loop owns it
         const keys = id === this.breatheNode
-          ? ["opacity","radius","pulse"]
-          : ["opacity","radius","glow","pulse"];
+          ? ["opacity","radius","pulse","x","y"]
+          : ["opacity","radius","glow","pulse","x","y"];
         keys.forEach(k => {
           const diff = tgt[k] - cur[k];
           if (Math.abs(diff) > 0.001) {
@@ -713,6 +713,37 @@ function PracticePanel({ nodeId }) {
   );
 }
 
+// ── Compute gathered cluster positions ────────────────────────────────────────
+// When a node is selected, pull connected nodes toward the cluster centroid
+// so they're compact and readable on screen. Returns {id: {x,y}} targets.
+function computeGatheredPositions(selectedId, nodes, edges) {
+  const cluster = new Set([selectedId]);
+  edges.forEach(([a,b]) => { if(a===selectedId) cluster.add(b); if(b===selectedId) cluster.add(a); });
+
+  const clusterNodes = nodes.filter(n => cluster.has(n.id));
+  // Centroid of cluster in original coords
+  const cx = clusterNodes.reduce((s,n)=>s+n.x,0) / clusterNodes.length;
+  const cy = clusterNodes.reduce((s,n)=>s+n.y,0) / clusterNodes.length;
+
+  // Target positions: pull each cluster node 40% of the way toward centroid
+  // Selected node stays put; neighbors gather around it
+  const PULL = 0.38;
+  const positions = {};
+  nodes.forEach(n => {
+    if (!cluster.has(n.id)) {
+      positions[n.id] = { x: n.x, y: n.y }; // non-cluster stay
+    } else if (n.id === selectedId) {
+      positions[n.id] = { x: n.x, y: n.y }; // selected stays
+    } else {
+      positions[n.id] = {
+        x: n.x + (cx - n.x) * PULL,
+        y: n.y + (cy - n.y) * PULL,
+      };
+    }
+  });
+  return positions;
+}
+
 // ── Compute base sizes (full-map, module-level) ────────────────────────────────
 const { sizes: NODE_SIZES, degree: NODE_DEGREE } = computeNodeSizes(NODES, EDGES);
 
@@ -797,11 +828,18 @@ export default function MentalMap() {
       animator.setTargets(fade);
     }, 80);
 
-    // Stage 3 (220ms): rescale to cluster-relative sizes
+    // Stage 3 (220ms): rescale to cluster-relative sizes + gather positions
     setTimeout(() => {
       const clusterSizes = computeClusterSizes(id, NODES, EDGES, DEGREE_RANGES);
+      const gatheredPos  = computeGatheredPositions(id, NODES, EDGES);
       const resize = {};
-      NODES.forEach(n => { resize[n.id] = { radius: clusterSizes[n.id] }; });
+      NODES.forEach(n => {
+        resize[n.id] = {
+          radius: clusterSizes[n.id],
+          x: gatheredPos[n.id].x,
+          y: gatheredPos[n.id].y,
+        };
+      });
       animator.setTargets(resize);
     }, 220);
 
@@ -821,10 +859,10 @@ export default function MentalMap() {
     setTooltip(null);
     animator.stopBreathe();
 
-    // Reset all nodes to base state
+    // Reset all nodes to base state including original positions
     const reset = {};
     NODES.forEach(n => {
-      reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0 };
+      reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:n.x, y:n.y };
     });
     animator.setTargets(reset);
 
@@ -936,16 +974,19 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               </text>
             ))}
 
-            {/* Edges */}
+            {/* Edges — use animated positions */}
             {EDGES.map(([a,b],i)=>{
               const na=nodeById(a), nb=nodeById(b); if(!na||!nb) return null;
               const hi = connected && connected.has(a) && connected.has(b);
-              const aOp = animState ? (animState[a]?.opacity??1) : 1;
-              const bOp = animState ? (animState[b]?.opacity??1) : 1;
+              const aAnim = animState?.[a], bAnim = animState?.[b];
+              const ax = aAnim?.x ?? na.x, ay = aAnim?.y ?? na.y;
+              const bx = bAnim?.x ?? nb.x, by = bAnim?.y ?? nb.y;
+              const aOp = aAnim?.opacity ?? 1;
+              const bOp = bAnim?.opacity ?? 1;
               const edgeOp = Math.min(aOp, bOp) * (hi ? 0.7 : !connected ? 0.18 : 0.05);
               return (
                 <line key={i}
-                  x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
+                  x1={ax} y1={ay} x2={bx} y2={by}
                   stroke={hi ? "#7F77DD" : "#2a3a5a"}
                   strokeWidth={hi ? 2 : 1}
                   strokeOpacity={edgeOp}
@@ -961,6 +1002,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const op   = anim?.opacity ?? 1;
               const glow = anim?.glow ?? 0;
               const pulse = anim?.pulse ?? 0;
+              const nx   = anim?.x ?? n.x;
+              const ny   = anim?.y ?? n.y;
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
@@ -975,7 +1018,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
               return (
                 <g key={n.id}
-                  transform={`translate(${n.x},${n.y})`}
+                  transform={`translate(${nx},${ny})`}
                   opacity={op}
                   style={{cursor: op < 0.05 ? "default" : "pointer"}}
                   onClick={() => op > 0.05 && selectNode(n.id)}
@@ -984,12 +1027,11 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                     const svg = e.currentTarget.closest("svg");
                     const rect = svg.getBoundingClientRect();
                     const wrap = svg.parentElement.getBoundingClientRect();
-                    // Parse current viewBox for accurate coord mapping
                     const vb = viewBox.split(" ").map(Number);
                     const scaleX = rect.width / vb[2];
                     const scaleY = rect.height / vb[3];
-                    const px = rect.left - wrap.left + (n.x - vb[0]) * scaleX;
-                    const py = rect.top  - wrap.top  + (n.y - vb[1]) * scaleY - r * scaleY - 12;
+                    const px = rect.left - wrap.left + (nx - vb[0]) * scaleX;
+                    const py = rect.top  - wrap.top  + (ny - vb[1]) * scaleY - r * scaleY - 12;
                     setTooltip({ x:px, y:py, name: n.full||n.label.replace("\n"," "), text: n.summary||"", color: c.fill });
                   }}
                   onMouseLeave={() => setTooltip(null)}
@@ -1068,15 +1110,28 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
         </div>
 
-        {/* Detail Panel */}
-        <div style={{width:selectedNode?340:0,flexShrink:0,overflow:"hidden",transition:"width .25s ease",background:"#0d1325",borderLeft:"1px solid #1a2540",display:"flex",flexDirection:"column"}}>
+        {/* Detail Panel — fixed size, outside SVG zoom */}
+        <div style={{
+          width: selectedNode ? 340 : 0,
+          minWidth: selectedNode ? 340 : 0,
+          flexShrink: 0,
+          overflow: "hidden",
+          transition: "width .25s ease, min-width .25s ease",
+          background: "#0d1325",
+          borderLeft: "1px solid #1a2540",
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+          zIndex: 20,  // always on top of canvas
+        }}>
           <div style={{width:340,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
             {selectedNode && <>
-              <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0}}>
+              <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0d1325",zIndex:2}}>
                 <button style={{position:"absolute",top:14,right:14,background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:18,lineHeight:1,fontFamily:"inherit"}} onClick={clearAll}>✕</button>
                 <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:COLORS[selectedNode.type]?.fill,marginBottom:3}}>{COLORS[selectedNode.type]?.typeLabel}</div>
                 <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",lineHeight:1.25,marginBottom:12,paddingRight:24,letterSpacing:"-0.02em"}}>{selectedNode.full||selectedNode.label.replace("\n"," ")}</div>
-                <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto"}}>
+                {/* Sticky tabs */}
+                <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto",position:"sticky",top:0,background:"#0d1325",zIndex:3}}>
                   {["overview", ...(hasHistory?["history"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
                     <button key={t} style={{flexShrink:0,padding:"8px 10px",background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#7F77DD":"transparent"}`,color:tab===t?"#e2e8f0":"#64748b",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,fontFamily:"inherit",whiteSpace:"nowrap"}}
                       onClick={()=>setTab(t)}>
@@ -1086,7 +1141,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 </div>
               </div>
 
-              <div style={{flex:1,overflowY:"auto",padding:16}}>
+              {/* Scrollable panel body */}
+              <div style={{flex:1,overflowY:"auto",padding:16,WebkitOverflowScrolling:"touch"}}>
                 {tab==="overview" && (
                   <div>
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
