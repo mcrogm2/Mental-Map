@@ -1671,9 +1671,9 @@ export default function MentalMap() {
     if (window.innerWidth < 768) setPanelCollapsed(true);
     animator.stopBreathe(); // stop any previous breathe immediately
 
-    // Kick off the line-glow wave: travels outward along each connecting edge,
-    // staggered by distance, then settles into an ambient pulse on those lines.
-    edgeWave.select(id, NODES, EDGES);
+    // Line-glow wave disabled for now — felt distracting. Logic is kept intact
+    // in EdgeWaveAnimator so it can be re-enabled later once refined.
+    // edgeWave.select(id, NODES, EDGES);
 
     const cluster = new Set([id]);
     EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
@@ -1727,7 +1727,7 @@ export default function MentalMap() {
     setTooltip(null);
     setPanelCollapsed(false);
     animator.stopBreathe();
-    edgeWave.deselect(); // fade the line glow out rather than cutting it instantly
+    // edgeWave.deselect(); // disabled along with the select() call above
 
     // Reset all nodes to base state including original positions
     const reset = {};
