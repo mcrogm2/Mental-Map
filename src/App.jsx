@@ -1659,6 +1659,102 @@ export default function MentalMap() {
     setViewBox(fresh);
   }, []);
 
+  // ── Draggable nodes ─────────────────────────────────────────────────────────
+  // Lets the user manually reposition any node via mouse or touch. A small
+  // movement threshold distinguishes a drag from a normal tap/click so both
+  // gestures keep working on the same node.
+  const dragNodeRef = useRef(null); // { id, startClientX, startClientY, startX, startY, moved }
+  const DRAG_THRESHOLD = 5; // px on screen before a press counts as a drag
+
+  // Convert a screen-pixel delta into SVG-coordinate delta, accounting for
+  // the current zoom level (viewBox width/height vs actual rendered size).
+  const screenDeltaToSvg = useCallback((dxPx, dyPx) => {
+    const el = svgRef.current;
+    if (!el) return { dx: dxPx, dy: dyPx };
+    const rect = el.getBoundingClientRect();
+    const vb = viewBoxRef.current;
+    return {
+      dx: dxPx * (vb[2] / rect.width),
+      dy: dyPx * (vb[3] / rect.height),
+    };
+  }, []);
+
+  const onNodeMouseDown = useCallback((e, id) => {
+    e.stopPropagation();
+    const node = animator.current[id] || basePos(id);
+    dragNodeRef.current = {
+      id, startClientX: e.clientX, startClientY: e.clientY,
+      startX: node.x, startY: node.y, moved: false,
+    };
+    const onMove = (ev) => {
+      const drag = dragNodeRef.current;
+      if (!drag) return;
+      const dxPx = ev.clientX - drag.startClientX;
+      const dyPx = ev.clientY - drag.startClientY;
+      if (!drag.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) drag.moved = true;
+      if (!drag.moved) return;
+      const { dx, dy } = screenDeltaToSvg(dxPx, dyPx);
+      const newX = drag.startX + dx, newY = drag.startY + dy;
+      animator.targets[drag.id] = { ...animator.targets[drag.id], x: newX, y: newY };
+      animator.current[drag.id] = { ...animator.current[drag.id], x: newX, y: newY };
+      animator.notify();
+    };
+    const onUp = () => {
+      const drag = dragNodeRef.current;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (drag && drag.moved) {
+        // Persist the new position so it survives deselect/reselect/recentering
+        BASE_POSITIONS[drag.id] = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
+      } else if (drag) {
+        // Treated as a normal click, not a drag
+        selectNode(drag.id);
+      }
+      dragNodeRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [screenDeltaToSvg]);
+
+  const onNodeTouchStart = useCallback((e, id) => {
+    if (e.touches.length !== 1) return; // let pinch-zoom own multi-touch
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const node = animator.current[id] || basePos(id);
+    dragNodeRef.current = {
+      id, startClientX: touch.clientX, startClientY: touch.clientY,
+      startX: node.x, startY: node.y, moved: false,
+    };
+    const onMove = (ev) => {
+      const drag = dragNodeRef.current;
+      if (!drag || ev.touches.length !== 1) return;
+      const t = ev.touches[0];
+      const dxPx = t.clientX - drag.startClientX;
+      const dyPx = t.clientY - drag.startClientY;
+      if (!drag.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) drag.moved = true;
+      if (!drag.moved) return;
+      ev.preventDefault();
+      const { dx, dy } = screenDeltaToSvg(dxPx, dyPx);
+      const newX = drag.startX + dx, newY = drag.startY + dy;
+      animator.targets[drag.id] = { ...animator.targets[drag.id], x: newX, y: newY };
+      animator.current[drag.id] = { ...animator.current[drag.id], x: newX, y: newY };
+      animator.notify();
+    };
+    const onEnd = () => {
+      const drag = dragNodeRef.current;
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      if (drag && drag.moved) {
+        BASE_POSITIONS[drag.id] = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
+      } else if (drag) {
+        selectNode(drag.id);
+      }
+      dragNodeRef.current = null;
+    };
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onEnd);
+  }, [screenDeltaToSvg]);
+
   // ── Selection with staged animation ───────────────────────────────────────
   const selectNode = useCallback((id) => {
     if (id === selectedRef.current) { clearAll(); return; }
@@ -1858,7 +1954,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               </filter>
             </defs>
 
-            <rect width="1800" height="1260" x="-450" y="-315" fill="#0a0f1e"/>
+            <rect width="1800" height="1260" x="-450" y="-315" fill="#0a0f1e"
+              onClick={() => selected && clearAll()}
+              style={{cursor: selected ? "pointer" : "default"}}
+            />
 
             {/* Cluster labels */}
             {clusterLabels.map(l=>(
@@ -1961,8 +2060,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <g key={n.id}
                   transform={`translate(${nx},${ny})`}
                   opacity={op}
-                  style={{cursor: op < 0.05 ? "default" : "pointer"}}
-                  onClick={() => op > 0.05 && selectNode(n.id)}
+                  style={{cursor: op < 0.05 ? "default" : "grab"}}
+                  onMouseDown={e => op > 0.05 && onNodeMouseDown(e, n.id)}
+                  onTouchStart={e => op > 0.05 && onNodeTouchStart(e, n.id)}
                   onMouseEnter={e => {
                     if (op < 0.1) return;
                     const svg = e.currentTarget.closest("svg");
