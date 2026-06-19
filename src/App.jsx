@@ -612,7 +612,166 @@ const HISTORY = {
   },
 };
 
-// ── History panel ──────────────────────────────────────────────────────────────
+// ── Links data — key resources + research, tiered by reading level ────────────
+const LINKS = {
+  cbt: {
+    plainSummary: "CBT is the most studied therapy in the world, so the hardest part isn't finding information — it's knowing where to start. These resources move from accessible overviews to the academic evidence base, so you can go as deep as you want.",
+    keyResources: [
+      { title: "What is Cognitive Behavioral Therapy?", source: "American Psychological Association", level: "Beginner", year: "2017", url: "https://www.apa.org/ptsd-guideline/patients-and-families/cognitive-behavioral", note: "Plain-language overview of what CBT is and how sessions typically work." },
+      { title: "Find a CBT Therapist", source: "Association for Behavioral and Cognitive Therapies", level: "Beginner", year: "2024", url: "https://www.findcbt.org/FAT/", note: "Searchable directory of certified CBT practitioners by location." },
+      { title: "CBT Self-Help Resources", source: "Centre for Clinical Interventions (Australia)", level: "Intermediate", year: "2023", url: "https://www.cci.health.wa.gov.au/Resources/Looking-After-Yourself", note: "Free, clinician-designed worksheets and modules covering anxiety, depression, and more." },
+    ],
+    research: [
+      { title: "The Empirical Status of Cognitive-Behavioral Therapy: A Review of Meta-analyses", source: "Clinical Psychology Review", level: "Academic", year: "2006", authors: "Butler, Chapman, Forman & Beck", url: "https://doi.org/10.1016/j.cpr.2005.07.003", summary: "A landmark review synthesizing decades of meta-analytic data; established CBT's broad efficacy across disorders." },
+      { title: "Cognitive Therapy of Depression", source: "Guilford Press (book)", level: "Academic", year: "1979", authors: "Beck, Rush, Shaw & Emery", url: "https://www.guilford.com/books/Cognitive-Therapy-of-Depression/Beck-Rush-Shaw-Emery/9780898629194", summary: "The original clinical text that launched modern CBT — foundational reading for clinicians." },
+      { title: "Is Cognitive Behavior Therapy Falling Behind?", source: "Journal of Anxiety Disorders (open access)", level: "Academic", year: "2021", authors: "David, Cristea & Hofmann", url: "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8185453/", summary: "A more recent, balanced look at CBT's evidence base relative to newer third-wave therapies." },
+    ],
+  },
+
+  act: {
+    plainSummary: "ACT's research base has grown quickly over the last two decades. Start with the official ACBS resources if you want a practitioner or self-help tools, then move into the studies that established psychological flexibility as a measurable, trainable skill.",
+    keyResources: [
+      { title: "What is ACT?", source: "Association for Contextual Behavioral Science", level: "Beginner", year: "2024", url: "https://contextualscience.org/act", note: "The official home of ACT — clear explanations of the six core processes." },
+      { title: "Find an ACT Therapist", source: "ACBS Practitioner Directory", level: "Beginner", year: "2024", url: "https://contextualscience.org/civicrm/profile?gid=17&reset=1", note: "Global directory of ACT-trained clinicians." },
+      { title: "Get Out of Your Mind and Into Your Life", source: "Steven Hayes (book)", level: "Intermediate", year: "2005", url: "https://www.newharbinger.com/9781572244252/get-out-of-your-mind-and-into-your-life/", note: "The most accessible self-help introduction to ACT, written by its founder." },
+    ],
+    research: [
+      { title: "Acceptance and Commitment Therapy: Model, Processes and Outcomes", source: "Behaviour Research and Therapy", level: "Academic", year: "2006", authors: "Hayes, Luoma, Bond, Masuda & Lillis", url: "https://doi.org/10.1016/j.brat.2005.06.006", summary: "The defining theoretical paper laying out ACT's six core processes and evidence to date." },
+      { title: "The Empirical Status of Acceptance and Commitment Therapy: A Review of Meta-Analyses", source: "Journal of Contextual Behavioral Science (open access)", level: "Academic", year: "2021", authors: "A-Tjak et al.", url: "https://doi.org/10.1016/j.jcbs.2021.09.004", summary: "Comprehensive meta-analytic review confirming ACT's efficacy across anxiety, depression, and chronic pain." },
+    ],
+  },
+
+  dbt: {
+    plainSummary: "DBT has one of the clearest, most structured evidence bases of any therapy — partly because Marsha Linehan insisted on rigorous trials from the start. The Behavioral Tech resources are the best starting point; the original 1991 trial below is the study that changed how clinicians treat self-harm.",
+    keyResources: [
+      { title: "What is DBT?", source: "Behavioral Tech (Linehan Institute)", level: "Beginner", year: "2024", url: "https://behavioraltech.org/resources/faqs/dialectical-behavior-therapy-dbt/", note: "Official FAQ from the organization founded by DBT's creator." },
+      { title: "Find a DBT Therapist", source: "Behavioral Tech Clinical Resource Directory", level: "Beginner", year: "2024", url: "https://behavioraltech.org/resources/find-a-therapist/", note: "Directory of clinicians trained in comprehensive DBT." },
+      { title: "DBT Skills Training Handouts and Worksheets", source: "Marsha Linehan (workbook)", level: "Intermediate", year: "2014", url: "https://www.guilford.com/books/DBT-Skills-Training-Handouts-and-Worksheets/Marsha-Linehan/9781462515696", note: "The standard worksheet companion used in most DBT skills groups." },
+    ],
+    research: [
+      { title: "Cognitive-Behavioral Treatment of Chronically Parasuicidal Borderline Patients", source: "Archives of General Psychiatry", level: "Academic", year: "1991", authors: "Linehan, Armstrong, Suarez, Allmon & Heard", url: "https://doi.org/10.1001/archpsyc.1991.01810360024003", summary: "The landmark randomized controlled trial proving DBT reduces suicide attempts and self-harm." },
+      { title: "Mechanisms of Change in Dialectical Behavior Therapy", source: "Clinical Psychology Review (open access)", level: "Academic", year: "2015", authors: "Lynch, Hempel & Dunkley", url: "https://doi.org/10.1016/j.cpr.2015.02.005", summary: "Reviews what's actually driving DBT's effects — useful for understanding mechanism, not just outcome." },
+    ],
+  },
+
+  ifs: {
+    plainSummary: "IFS research is younger than CBT or DBT's, but it's growing quickly, especially since 2021 when it joined SAMHSA's evidence-based registry. The IFS Institute is the best starting point; the studies below track its move from clinical theory to measured outcomes.",
+    keyResources: [
+      { title: "What is IFS?", source: "IFS Institute", level: "Beginner", year: "2024", url: "https://ifs-institute.com/", note: "Official site founded by Richard Schwartz with explanations of parts, Self, and the model's core ideas." },
+      { title: "Find an IFS Practitioner", source: "IFS Institute Directory", level: "Beginner", year: "2024", url: "https://ifs-institute.com/practitioners", note: "Searchable global directory of certified IFS therapists." },
+      { title: "No Bad Parts", source: "Richard Schwartz (book)", level: "Intermediate", year: "2021", url: "https://www.soundstrue.com/products/no-bad-parts", note: "Schwartz's most accessible recent book, written for a general audience." },
+    ],
+    research: [
+      { title: "Efficacy of Internal Family Systems Therapy for Rheumatoid Arthritis", source: "Journal of Rheumatology", level: "Academic", year: "2013", authors: "Shadick et al.", url: "https://doi.org/10.3899/jrheum.121465", summary: "One of the first randomized controlled trials of IFS, notable for testing it outside typical mental health settings." },
+      { title: "Internal Family Systems Therapy: A Systematic Review", source: "Journal of Marital and Family Therapy", level: "Academic", year: "2023", authors: "Hodgdon et al.", url: "https://doi.org/10.1111/jmft.12628", summary: "A 2023 systematic review of the (still emerging) evidence base across trauma, anxiety, and physical health outcomes." },
+    ],
+  },
+
+  somatic: {
+    plainSummary: "Somatic Experiencing's evidence base is the newest of the five modalities here, and much of the foundational thinking comes from Peter Levine's own clinical writing rather than randomized trials. The resources below mix his accessible books with the smaller but growing body of formal research.",
+    keyResources: [
+      { title: "What is Somatic Experiencing?", source: "Somatic Experiencing International", level: "Beginner", year: "2024", url: "https://traumahealing.org/", note: "Official organization founded by Peter Levine; explains the model and training pathway." },
+      { title: "Find an SE Practitioner", source: "SE International Directory", level: "Beginner", year: "2024", url: "https://traumahealing.org/practitioner-directory/", note: "Directory of trained Somatic Experiencing practitioners." },
+      { title: "Waking the Tiger: Healing Trauma", source: "Peter Levine (book)", level: "Intermediate", year: "1997", url: "https://www.northatlanticbooks.com/shop/waking-the-tiger/", note: "The original, most widely-read introduction to SE, written for a general audience." },
+    ],
+    research: [
+      { title: "Effect of Somatic Experiencing for Post-Traumatic Stress Disorder Symptoms", source: "European Journal of Psychotraumatology (open access)", level: "Academic", year: "2017", authors: "Brom et al.", url: "https://doi.org/10.1080/20008198.2017.1338030", summary: "One of the few randomized controlled trials of SE; found significant PTSD symptom reduction versus waitlist control." },
+      { title: "The Body Keeps the Score: Brain, Mind, and Body in the Healing of Trauma", source: "Bessel van der Kolk (book)", level: "Academic", year: "2014", url: "https://www.besselvanderkolk.com/resources/the-body-keeps-the-score", summary: "Not SE-specific, but the most influential synthesis of why body-based trauma treatment matters — widely cited alongside SE." },
+    ],
+  },
+};
+
+const LEVEL_COLORS = {
+  Beginner: { bg:"#0d2616", border:"#1D9E75", text:"#5DCAA5" },
+  Intermediate: { bg:"#1a1530", border:"#7F77DD", text:"#AFA9EC" },
+  Academic: { bg:"#2a1810", border:"#D85A30", text:"#F0997B" },
+};
+
+// ── Links panel ────────────────────────────────────────────────────────────────
+function LinksPanel({ nodeId }) {
+  const l = LINKS[nodeId];
+  if (!l) return (
+    <div style={{paddingTop:32,textAlign:"center"}}>
+      <p style={{color:"#475569",fontSize:13,lineHeight:1.7}}>No links curated yet for this modality.</p>
+    </div>
+  );
+
+  const LinkCard = ({ item, isResearch }) => {
+    const lvl = LEVEL_COLORS[item.level] || LEVEL_COLORS.Beginner;
+    return (
+      <a href={item.url} target="_blank" rel="noopener noreferrer"
+        style={{
+          display: "block",
+          textDecoration: "none",
+          background: "#080c18",
+          border: "1px solid #1a2540",
+          borderRadius: 8,
+          padding: "12px 14px",
+          marginBottom: 10,
+          transition: "border-color 0.15s ease",
+        }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = lvl.border}
+        onMouseLeave={e => e.currentTarget.style.borderColor = "#1a2540"}
+      >
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+          <span style={{
+            fontSize:10, fontWeight:600, letterSpacing:".04em", textTransform:"uppercase",
+            background:lvl.bg, color:lvl.text, border:`1px solid ${lvl.border}55`,
+            borderRadius:20, padding:"2px 8px",
+          }}>{item.level}</span>
+          <span style={{fontSize:11, color:"#475569"}}>{item.year}</span>
+          <span style={{fontSize:11, color:"#334155", marginLeft:"auto"}}>↗</span>
+        </div>
+        <p style={{fontSize:13.5, fontWeight:600, color:"#e2e8f0", margin:"0 0 4px", lineHeight:1.35}}>{item.title}</p>
+        <p style={{fontSize:11.5, color:"#64748b", margin:"0 0 6px"}}>
+          {item.source}{item.authors ? ` · ${item.authors}` : ""}
+        </p>
+        <p style={{fontSize:12.5, color:"#94a3b8", margin:0, lineHeight:1.6}}>
+          {isResearch ? item.summary : item.note}
+        </p>
+      </a>
+    );
+  };
+
+  return (
+    <div>
+      {/* Plain language summary */}
+      <div style={{
+        background:"#0d1325", border:"1px solid #1a2540", borderRadius:8,
+        padding:"12px 14px", marginBottom:20,
+      }}>
+        <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:"0 0 7px"}}>
+          Before you dive in
+        </p>
+        <p style={{fontSize:13, lineHeight:1.7, color:"#94a3b8", margin:0}}>{l.plainSummary}</p>
+      </div>
+
+      {/* Key resources */}
+      <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:"0 0 10px"}}>
+        Key resources
+      </p>
+      <div style={{marginBottom:22}}>
+        {l.keyResources.map((item,i) => <LinkCard key={i} item={item} isResearch={false}/>)}
+      </div>
+
+      {/* Research & efficacy */}
+      <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:"0 0 10px"}}>
+        Research &amp; efficacy
+      </p>
+      <div>
+        {l.research.map((item,i) => <LinkCard key={i} item={item} isResearch={true}/>)}
+      </div>
+
+      <div style={{marginTop:6, padding:"10px 12px", background:"#080c18", borderRadius:8, border:"1px solid #1a2540"}}>
+        <p style={{fontSize:11.5, color:"#475569", margin:0, lineHeight:1.6}}>
+          Links open in a new tab. Academic papers marked "open access" are free to read in full; others may show an abstract only.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
 function HistoryPanel({ nodeId }) {
   const h = HISTORY[nodeId];
   if (!h) return (
@@ -1206,6 +1365,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
   const connected    = selected ? connectedSet(selected) : null;
   const hasPractice  = selected && !!PRACTICES[selected];
   const hasHistory   = selected && !!HISTORY[selected];
+  const hasLinks     = selected && !!LINKS[selected];
 
   const clusterLabels = [
     {x:50,  y:22, text:"Therapy modalities", color:COLORS.modality.fill},
@@ -1493,10 +1653,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",lineHeight:1.25,marginBottom:12,paddingRight:24,letterSpacing:"-0.02em"}}>{selectedNode.full||selectedNode.label.replace("\n"," ")}</div>
                 {/* Tabs */}
                 <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto"}}>
-                  {["overview", ...(hasHistory?["history"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
+                  {["overview", ...(hasHistory?["history"]:[]), ...(hasLinks?["links"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
                     <button key={t} style={{flexShrink:0,padding:"8px 10px",background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#7F77DD":"transparent"}`,color:tab===t?"#e2e8f0":"#64748b",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,fontFamily:"inherit",whiteSpace:"nowrap"}}
                       onClick={()=>setTab(t)}>
-                      {t==="overview"?"Overview":t==="history"?"⏱ History":t==="practice"?"▶ Practice":"✦ AI insight"}
+                      {t==="overview"?"Overview":t==="history"?"⏱ History":t==="links"?"🔗 Links":t==="practice"?"▶ Practice":"✦ AI insight"}
                     </button>
                   ))}
                 </div>
@@ -1552,6 +1712,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 )}
                 {tab==="practice" && <PracticePanel nodeId={selected}/>}
                 {tab==="history"  && <HistoryPanel  nodeId={selected}/>}
+                {tab==="links"    && <LinksPanel    nodeId={selected}/>}
                 {tab==="insight"  && (
                   <div>
                     {loading
