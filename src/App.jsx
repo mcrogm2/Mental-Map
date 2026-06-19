@@ -101,6 +101,170 @@ class NodeAnimator {
   }
 }
 
+// ── Edge wave animator ──────────────────────────────────────────────────────
+// Isolated, single-purpose engine just for the line-glow feature:
+// on selection, glow travels outward along each connecting line (staggered by
+// distance from the selected node), then settles into a slow ambient pulse that
+// continues on those same lines for as long as the node stays selected.
+// Lighten a hex color toward white by a 0–1 amount — used so the glow uses each
+// node's own cluster color, brightened, rather than a separate universal color.
+function lightenHex(hex, amount) {
+  const h = hex.replace("#","");
+  const r = parseInt(h.substring(0,2),16);
+  const g = parseInt(h.substring(2,4),16);
+  const b = parseInt(h.substring(4,6),16);
+  const lr = Math.round(r + (255-r)*amount);
+  const lg = Math.round(g + (255-g)*amount);
+  const lb = Math.round(b + (255-b)*amount);
+  return `rgb(${lr},${lg},${lb})`;
+}
+
+function easeOutQuad(t) { return 1 - (1-t)*(1-t); }
+function easeOutSine(t) { return Math.sin((t * Math.PI) / 2); }
+
+class EdgeWaveAnimator {
+  constructor() {
+    this.rafId = null;
+    this.listeners = [];
+    this.selectedId = null;
+    this.travel = {};      // edgeKey → 0..1 travel progress (during the initial wave)
+    this.ambient = {};     // edgeKey → 0..1 current ambient pulse glow
+    this.delays = {};      // edgeKey → ms delay before travel starts
+    this.durations = {};   // edgeKey → ms travel duration
+    this.phase = {};       // edgeKey → phase offset for ambient pulse (so lines don't pulse in lockstep)
+    this.mode = "idle";    // "idle" | "traveling" | "ambient" | "fading"
+    this.startTime = 0;
+    this.fadeStart = 0;
+  }
+  key(a, b) { return `${a}|${b}`; }
+  get(a, b) {
+    const k1 = this.key(a,b), k2 = this.key(b,a);
+    return this.travel[k1] ?? this.travel[k2] ?? this.ambient[k1] ?? this.ambient[k2] ?? 0;
+  }
+  isTraveling() { return this.mode === "traveling"; }
+
+  // Begin the wave: glow travels from selectedId outward to each connected node,
+  // staggered by straight-line distance (closer = sooner & faster).
+  select(selectedId, nodes, edges) {
+    this.stop();
+    this.selectedId = selectedId;
+    this.mode = "traveling";
+    this.startTime = performance.now();
+    this.travel = {};
+    this.ambient = {};
+    this.delays = {};
+    this.durations = {};
+    this.phase = {};
+
+    const src = nodes.find(n => n.id === selectedId);
+    if (!src) return;
+
+    const myEdges = edges.filter(([a,b]) => a === selectedId || b === selectedId);
+    const distances = myEdges.map(([a,b]) => {
+      const otherId = a === selectedId ? b : a;
+      const other = nodes.find(n => n.id === otherId);
+      return other ? Math.hypot(other.x - src.x, other.y - src.y) : 0;
+    });
+    const minD = distances.length ? Math.min(...distances) : 0;
+    const maxD = distances.length ? Math.max(...distances) : 1;
+    const range = Math.max(1, maxD - minD);
+
+    myEdges.forEach(([a,b], i) => {
+      const k = this.key(a,b);
+      const d = distances[i];
+      const t = (d - minD) / range; // 0 (closest) → 1 (farthest)
+      this.delays[k]    = Math.round(t * 400);          // closer lines start sooner
+      this.durations[k] = Math.round(700 + t * 500);    // slow headlight travel — not a fast fill
+      this.travel[k] = 0;
+      this.phase[k]  = (i * 173) % 3000; // stable per-edge phase offset for ambient pulse
+    });
+
+    const tick = (now) => {
+      if (this.selectedId !== selectedId) return;
+      const elapsed = now - this.startTime;
+      let stillTraveling = false;
+
+      myEdges.forEach(([a,b]) => {
+        const k = this.key(a,b);
+        const localT = (elapsed - this.delays[k]) / this.durations[k];
+        const progress = Math.max(0, Math.min(1, localT));
+        this.travel[k] = easeOutSine(progress);
+        if (progress < 1) stillTraveling = true;
+      });
+
+      this.notify();
+
+      if (stillTraveling) {
+        this.rafId = requestAnimationFrame(tick);
+      } else {
+        // Wave has fully landed on every connected line — hand off to ambient pulse
+        this.mode = "ambient";
+        this.startAmbient(myEdges);
+      }
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+
+  // Slow ambient pulse on all currently-connected lines, gently phase-offset so
+  // they don't all brighten/dim in perfect unison — feels organic, not mechanical.
+  startAmbient(myEdges) {
+    const PERIOD = 2800;
+    const MIN = 0.30, MAX = 0.85;
+    const ambientStart = performance.now();
+    const tick = (now) => {
+      if (this.mode !== "ambient") return;
+      myEdges.forEach(([a,b]) => {
+        const k = this.key(a,b);
+        const t = (((now - ambientStart) + (this.phase[k]||0)) % PERIOD) / PERIOD;
+        const sine = 0.5 + 0.5 * Math.sin(2*Math.PI*t - Math.PI/2);
+        this.ambient[k] = MIN + sine * (MAX - MIN);
+        this.travel[k] = 1; // keep travel at full so get() returns ambient seamlessly
+      });
+      this.notify();
+      this.rafId = requestAnimationFrame(tick);
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+
+  // Reverse / deselect: fade all active line glow out smoothly rather than cutting it
+  deselect() {
+    if (this.mode === "idle") return;
+    const fadeFrom = { ...this.travel };
+    const ambFrom  = { ...this.ambient };
+    this.mode = "fading";
+    const fadeStart = performance.now();
+    const FADE_DUR = 260;
+    const tick = (now) => {
+      if (this.mode !== "fading") return;
+      const t = Math.min(1, (now - fadeStart) / FADE_DUR);
+      Object.keys(fadeFrom).forEach(k => {
+        const base = Math.max(fadeFrom[k] ?? 0, ambFrom[k] ?? 0);
+        this.travel[k]  = base * (1 - t);
+        this.ambient[k] = 0;
+      });
+      this.notify();
+      if (t < 1) {
+        this.rafId = requestAnimationFrame(tick);
+      } else {
+        this.stop();
+      }
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+
+  stop() {
+    this.mode = "idle";
+    this.selectedId = null;
+    this.travel = {};
+    this.ambient = {};
+    if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = null; }
+    this.notify();
+  }
+  subscribe(fn) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter(l=>l!==fn); }; }
+  notify() { this.listeners.forEach(fn => fn()); }
+  destroy() { if (this.rafId) cancelAnimationFrame(this.rafId); }
+}
+
 // Cluster-aware sizing: recompute node radii based only on within-cluster degrees
 function computeClusterSizes(selectedId, nodes, edges, baseRanges) {
   const cluster = new Set();
@@ -1087,6 +1251,7 @@ const INITIAL_VIEWBOX = getInitialViewBox();
 
 // Singleton animator — lives outside React
 const animator = new NodeAnimator();
+const edgeWave = new EdgeWaveAnimator();
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function MentalMap() {
@@ -1180,6 +1345,7 @@ export default function MentalMap() {
   }, [panelMaxScroll]);
   // Animated node state (updated by animator outside React render)
   const [animState, setAnimState] = useState(null);
+  const [edgeWaveTick, setEdgeWaveTick] = useState(0); // bumps on every edge-wave frame
   const svgRef = useRef(null);
   const selectedRef = useRef(null);
 
@@ -1187,7 +1353,8 @@ export default function MentalMap() {
   useEffect(() => {
     animator.init(NODES, NODE_SIZES);
     const unsub = animator.subscribe(state => setAnimState({...state}));
-    return () => { unsub(); animator.destroy(); };
+    const unsubEdge = edgeWave.subscribe(() => setEdgeWaveTick(t => t + 1));
+    return () => { unsub(); unsubEdge(); animator.destroy(); edgeWave.destroy(); };
   }, []);
 
   // ── Draggable panel width ──────────────────────────────────────────────────
@@ -1419,6 +1586,10 @@ export default function MentalMap() {
     if (window.innerWidth < 768) setPanelCollapsed(true);
     animator.stopBreathe(); // stop any previous breathe immediately
 
+    // Kick off the line-glow wave: travels outward along each connecting edge,
+    // staggered by distance, then settles into an ambient pulse on those lines.
+    edgeWave.select(id, NODES, EDGES);
+
     const cluster = new Set([id]);
     EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
 
@@ -1471,6 +1642,7 @@ export default function MentalMap() {
     setTooltip(null);
     setPanelCollapsed(false);
     animator.stopBreathe();
+    edgeWave.deselect(); // fade the line glow out rather than cutting it instantly
 
     // Reset all nodes to base state including original positions
     const reset = {};
@@ -1612,7 +1784,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               </text>
             ))}
 
-            {/* Edges — use animated positions */}
+            {/* Edges — base purple line + traveling "headlight" overlay from selected node */}
             {EDGES.map(([a,b],i)=>{
               const na=nodeById(a), nb=nodeById(b); if(!na||!nb) return null;
               const hi = connected && connected.has(a) && connected.has(b);
@@ -1622,13 +1794,58 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const aOp = aAnim?.opacity ?? 1;
               const bOp = bAnim?.opacity ?? 1;
               const edgeOp = Math.min(aOp, bOp) * (hi ? 0.7 : !connected ? 0.18 : 0.05);
+
+              const touchesSelected = selected && (a === selected || b === selected);
+              const glowVal = touchesSelected ? edgeWave.get(a, b) : 0;
+              const isAmbient = edgeWave.mode === "ambient";
+
+              // Headlight travels FROM the selected node TOWARD the neighbor.
+              const srcX = a === selected ? ax : bx, srcY = a === selected ? ay : by;
+              const dstX = a === selected ? bx : ax, dstY = a === selected ? by : ay;
+              const lineLen = Math.hypot(dstX - srcX, dstY - srcY);
+
+              // The "car" position along the line (0 = at selected node, 1 = arrived)
+              const headPos = Math.min(1, glowVal);
+              const headX = srcX + (dstX - srcX) * headPos;
+              const headY = srcY + (dstY - srcY) * headPos;
+              // Trail behind the headlight, fixed pixel length so it reads as a
+              // short beam rather than a fill — shorter trail on shorter lines.
+              const trailLenPx = Math.min(lineLen * 0.4, 55);
+              const trailT = Math.max(0, headPos - trailLenPx / Math.max(lineLen, 1));
+              const trailX = srcX + (dstX - srcX) * trailT;
+              const trailY = srcY + (dstY - srcY) * trailT;
+
+              const PURPLE = "#7F77DD";
+              const PURPLE_BRIGHT = "#B8B3F0"; // lightened purple — the headlight itself
+
               return (
-                <line key={i}
-                  x1={ax} y1={ay} x2={bx} y2={by}
-                  stroke={hi ? "#7F77DD" : "#2a3a5a"}
-                  strokeWidth={hi ? 2 : 1}
-                  strokeOpacity={edgeOp}
-                />
+                <g key={i}>
+                  <line
+                    x1={ax} y1={ay} x2={bx} y2={by}
+                    stroke={hi ? PURPLE : "#2a3a5a"}
+                    strokeWidth={hi ? 2 : 1}
+                    strokeOpacity={edgeOp}
+                  />
+                  {touchesSelected && !isAmbient && glowVal > 0.005 && glowVal < 1 && (
+                    <line
+                      x1={trailX} y1={trailY}
+                      x2={headX} y2={headY}
+                      stroke={PURPLE_BRIGHT}
+                      strokeWidth={3}
+                      strokeOpacity={0.95}
+                      strokeLinecap="round"
+                    />
+                  )}
+                  {touchesSelected && isAmbient && (
+                    <line
+                      x1={srcX} y1={srcY} x2={dstX} y2={dstY}
+                      stroke={PURPLE_BRIGHT}
+                      strokeWidth={2}
+                      strokeOpacity={(edgeWave.ambient[edgeWave.key(a,b)] ?? edgeWave.ambient[edgeWave.key(b,a)] ?? 0) * 0.55}
+                      strokeLinecap="round"
+                    />
+                  )}
+                </g>
               );
             })}
 
@@ -1668,9 +1885,31 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                     const vb = viewBox.split(" ").map(Number);
                     const scaleX = rect.width / vb[2];
                     const scaleY = rect.height / vb[3];
-                    const px = rect.left - wrap.left + (nx - vb[0]) * scaleX;
-                    const py = rect.top  - wrap.top  + (ny - vb[1]) * scaleY - r * scaleY - 12;
-                    setTooltip({ x:px, y:py, name: n.full||n.label.replace("\n"," "), text: n.summary||"", color: c.fill });
+                    const nodePx = rect.left - wrap.left + (nx - vb[0]) * scaleX;
+                    const nodePy = rect.top  - wrap.top  + (ny - vb[1]) * scaleY;
+                    const nodeRadiusPx = r * scaleY;
+
+                    const TOOLTIP_W = 220, TOOLTIP_PAD = 12;
+                    const wrapW = wrap.width, wrapH = wrap.height;
+
+                    // Clamp horizontal so the box never spills past the canvas edges,
+                    // even though it visually still "points" at the node via the arrow.
+                    const halfW = TOOLTIP_W / 2;
+                    const clampedX = Math.min(Math.max(nodePx, halfW + TOOLTIP_PAD), wrapW - halfW - TOOLTIP_PAD);
+
+                    // Flip below the node if there isn't enough room above it
+                    const estTooltipH = 90; // rough height incl. padding, enough for 2-3 lines
+                    const spaceAbove = nodePy - nodeRadiusPx - 12;
+                    const placeBelow = spaceAbove < estTooltipH;
+                    const py = placeBelow
+                      ? nodePy + nodeRadiusPx + 12
+                      : nodePy - nodeRadiusPx - 12;
+
+                    setTooltip({
+                      x: clampedX, y: py, flip: placeBelow,
+                      arrowOffset: Math.max(-halfW + 14, Math.min(halfW - 14, nodePx - clampedX)),
+                      name: n.full||n.label.replace("\n"," "), text: n.summary||"", color: c.fill
+                    });
                   }}
                   onMouseLeave={() => setTooltip(null)}
                 >
@@ -1706,19 +1945,32 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             })}
           </svg>
 
-          {/* Custom tooltip */}
+          {/* Custom tooltip — clamped to viewport, flips below node near top edge */}
           {tooltip && (
             <div style={{
               position:"absolute", left:tooltip.x, top:tooltip.y,
-              transform:"translate(-50%,-100%)", pointerEvents:"none", zIndex:50,
+              transform: tooltip.flip ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+              pointerEvents:"none", zIndex:50,
               maxWidth:220, background:"#0d1325",
               border:`1px solid ${tooltip.color}55`, borderRadius:10,
               padding:"9px 12px", boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
             }}>
               <p style={{fontSize:11,fontWeight:600,color:tooltip.color,margin:"0 0 4px",letterSpacing:".04em",textTransform:"uppercase",lineHeight:1.3}}>{tooltip.name}</p>
               <p style={{fontSize:12.5,color:"#cbd5e1",margin:0,lineHeight:1.6}}>{tooltip.text}</p>
-              <div style={{position:"absolute",bottom:-6,left:"50%",transform:"translateX(-50%)",width:10,height:6,overflow:"hidden"}}>
-                <div style={{width:10,height:10,background:"#0d1325",border:`1px solid ${tooltip.color}55`,transform:"rotate(45deg)",transformOrigin:"top left",marginTop:3}}/>
+              {/* Arrow shifts to stay aligned under/above the actual node, even when the box itself is clamped */}
+              <div style={{
+                position:"absolute",
+                [tooltip.flip ? "top" : "bottom"]: -6,
+                left: `calc(50% + ${tooltip.arrowOffset || 0}px)`,
+                transform:"translateX(-50%)", width:10, height:6, overflow:"hidden"
+              }}>
+                <div style={{
+                  width:10, height:10, background:"#0d1325",
+                  border:`1px solid ${tooltip.color}55`,
+                  transform: tooltip.flip ? "rotate(45deg)" : "rotate(45deg)",
+                  transformOrigin: tooltip.flip ? "bottom right" : "top left",
+                  marginTop: tooltip.flip ? -7 : 3,
+                }}/>
               </div>
             </div>
           )}
