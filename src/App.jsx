@@ -23,11 +23,12 @@ class NodeAnimator {
     this.breatheNode = null; // which node is breathing
     this.breatheStart = null;
   }
-  init(nodes, sizes) {
+  init(nodes, sizes, getPos) {
     nodes.forEach(n => {
       const r = sizes[n.id] ?? 22;
-      this.targets[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:n.x, y:n.y };
-      this.current[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:n.x, y:n.y };
+      const p = getPos ? getPos(n.id) : { x: n.x, y: n.y };
+      this.targets[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:p.x, y:p.y };
+      this.current[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:p.x, y:p.y };
     });
   }
   setTargets(newTargets) {
@@ -1200,31 +1201,115 @@ function computeGatheredPositions(selectedId, nodes, edges) {
   edges.forEach(([a,b]) => { if(a===selectedId) cluster.add(b); if(b===selectedId) cluster.add(a); });
 
   const clusterNodes = nodes.filter(n => cluster.has(n.id));
-  // Centroid of cluster in original coords
-  const cx = clusterNodes.reduce((s,n)=>s+n.x,0) / clusterNodes.length;
-  const cy = clusterNodes.reduce((s,n)=>s+n.y,0) / clusterNodes.length;
+  // Centroid of cluster, using the collision-resolved base positions —
+  // gathering should start from the already-valid passive layout, not the
+  // raw hand-placed coordinates (which may overlap before resolution).
+  const cx = clusterNodes.reduce((s,n)=>s+basePos(n.id).x,0) / clusterNodes.length;
+  const cy = clusterNodes.reduce((s,n)=>s+basePos(n.id).y,0) / clusterNodes.length;
 
-  // Target positions: pull each cluster node 40% of the way toward centroid
+  // Target positions: pull each cluster node 38% of the way toward centroid
   // Selected node stays put; neighbors gather around it
   const PULL = 0.38;
   const positions = {};
   nodes.forEach(n => {
+    const p = basePos(n.id);
     if (!cluster.has(n.id)) {
-      positions[n.id] = { x: n.x, y: n.y }; // non-cluster stay
+      positions[n.id] = { x: p.x, y: p.y }; // non-cluster stay
     } else if (n.id === selectedId) {
-      positions[n.id] = { x: n.x, y: n.y }; // selected stays
+      positions[n.id] = { x: p.x, y: p.y }; // selected stays
     } else {
       positions[n.id] = {
-        x: n.x + (cx - n.x) * PULL,
-        y: n.y + (cy - n.y) * PULL,
+        x: p.x + (cx - p.x) * PULL,
+        y: p.y + (cy - p.y) * PULL,
       };
     }
   });
+
+  // Resolve any overlaps introduced by gathering — only among the cluster
+  // nodes (non-cluster nodes are untouched and already non-overlapping in
+  // the base layout). The selected node is pinned and never moved.
+  resolveCollisions(positions, clusterNodes, selectedId);
+
   return positions;
+}
+
+// ── Collision resolver ──────────────────────────────────────────────────────
+// Generic pairwise repulsion pass: given a set of {x,y} positions and the
+// nodes' radii, nudge any overlapping pair apart along the line between their
+// centers until they clear a minimum gap. Runs several iterations since
+// resolving one pair can reintroduce a small overlap with a third node.
+function resolveCollisions(positions, nodesSubset, pinnedId, opts = {}) {
+  const { iterations = 12, gap = 14, getRadius = (n) => RADIUS_LOOKUP[n.id] ?? 24 } = opts;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    let movedAny = false;
+    for (let i = 0; i < nodesSubset.length; i++) {
+      for (let j = i + 1; j < nodesSubset.length; j++) {
+        const A = nodesSubset[i], B = nodesSubset[j];
+        const pa = positions[A.id], pb = positions[B.id];
+        if (!pa || !pb) continue;
+
+        const dx = pb.x - pa.x, dy = pb.y - pa.y;
+        let dist = Math.hypot(dx, dy);
+        const minDist = getRadius(A) + getRadius(B) + gap;
+
+        if (dist < minDist) {
+          movedAny = true;
+          // If exactly stacked (dist ~0), nudge apart along a stable pseudo-random axis
+          // derived from node ids so it's deterministic, not jittery between renders.
+          if (dist < 0.5) {
+            const seed = (A.id.charCodeAt(0) + B.id.charCodeAt(0)) % 360;
+            const rad = (seed * Math.PI) / 180;
+            dist = 0.5;
+            positions[B.id] = { x: pa.x + Math.cos(rad) * minDist, y: pa.y + Math.sin(rad) * minDist };
+            continue;
+          }
+          const overlap = minDist - dist;
+          const ux = dx / dist, uy = dy / dist;
+          const aIsPinned = A.id === pinnedId;
+          const bIsPinned = B.id === pinnedId;
+
+          if (aIsPinned && bIsPinned) {
+            continue; // both pinned, nothing we can do (shouldn't happen)
+          } else if (aIsPinned) {
+            // Only B moves, full overlap distance
+            positions[B.id] = { x: pb.x + ux * overlap, y: pb.y + uy * overlap };
+          } else if (bIsPinned) {
+            positions[A.id] = { x: pa.x - ux * overlap, y: pa.y - uy * overlap };
+          } else {
+            // Split the correction between both
+            positions[A.id] = { x: pa.x - ux * overlap * 0.5, y: pa.y - uy * overlap * 0.5 };
+            positions[B.id] = { x: pb.x + ux * overlap * 0.5, y: pb.y + uy * overlap * 0.5 };
+          }
+        }
+      }
+    }
+    if (!movedAny) break;
+  }
 }
 
 // ── Compute base sizes (full-map, module-level) ────────────────────────────────
 const { sizes: NODE_SIZES, degree: NODE_DEGREE } = computeNodeSizes(NODES, EDGES);
+
+// Stable radius-per-node lookup, used by the collision resolver. Uses each
+// node's full-map size since that's the conservative (usually larger) case —
+// cluster-relative sizes during selection are handled by re-deriving this
+// per-call where needed.
+const RADIUS_LOOKUP = NODE_SIZES;
+
+// ── Base layout collision fix ────────────────────────────────────────────────
+// The hand-placed coordinates in NODES can overlap (e.g. two challenge nodes
+// originally only 50px apart with 26px+ radii). Resolve that once at module
+// load so the *passive*, nothing-selected map never shows overlapping nodes.
+const BASE_POSITIONS = (() => {
+  const positions = {};
+  NODES.forEach(n => { positions[n.id] = { x: n.x, y: n.y }; });
+  resolveCollisions(positions, NODES, null, { gap: 10 });
+  return positions;
+})();
+function basePos(id) {
+  return BASE_POSITIONS[id] || { x: 0, y: 0 };
+}
 
 // ── Compute initial viewBox from actual screen size ────────────────────────────
 // Done at module level so first render is already correct, no flash/jump.
@@ -1351,7 +1436,7 @@ export default function MentalMap() {
 
   // Init animator once
   useEffect(() => {
-    animator.init(NODES, NODE_SIZES);
+    animator.init(NODES, NODE_SIZES, basePos);
     const unsub = animator.subscribe(state => setAnimState({...state}));
     const unsubEdge = edgeWave.subscribe(() => setEdgeWaveTick(t => t + 1));
     return () => { unsub(); unsubEdge(); animator.destroy(); edgeWave.destroy(); };
@@ -1647,7 +1732,8 @@ export default function MentalMap() {
     // Reset all nodes to base state including original positions
     const reset = {};
     NODES.forEach(n => {
-      reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:n.x, y:n.y };
+      const p = basePos(n.id);
+      reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
     });
     animator.setTargets(reset);
 
@@ -1789,8 +1875,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const na=nodeById(a), nb=nodeById(b); if(!na||!nb) return null;
               const hi = connected && connected.has(a) && connected.has(b);
               const aAnim = animState?.[a], bAnim = animState?.[b];
-              const ax = aAnim?.x ?? na.x, ay = aAnim?.y ?? na.y;
-              const bx = bAnim?.x ?? nb.x, by = bAnim?.y ?? nb.y;
+              const ax = aAnim?.x ?? basePos(a).x, ay = aAnim?.y ?? basePos(a).y;
+              const bx = bAnim?.x ?? basePos(b).x, by = bAnim?.y ?? basePos(b).y;
               const aOp = aAnim?.opacity ?? 1;
               const bOp = bAnim?.opacity ?? 1;
               const edgeOp = Math.min(aOp, bOp) * (hi ? 0.7 : !connected ? 0.18 : 0.05);
@@ -1857,8 +1943,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const op   = anim?.opacity ?? 1;
               const glow = anim?.glow ?? 0;
               const pulse = anim?.pulse ?? 0;
-              const nx   = anim?.x ?? n.x;
-              const ny   = anim?.y ?? n.y;
+              const nx   = anim?.x ?? basePos(n.id).x;
+              const ny   = anim?.y ?? basePos(n.id).y;
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
@@ -2062,7 +2148,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",lineHeight:1.25,marginBottom:12,paddingRight:24,letterSpacing:"-0.02em"}}>{selectedNode.full||selectedNode.label.replace("\n"," ")}</div>
                 {/* Tabs */}
                 <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto"}}>
-                  {["overview", ...(hasHistory?["history"]:[]), ...(hasLinks?["links"]:[]), ...(hasTips?["tips"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
+                  {["overview", ...(hasHistory?["history"]:[]), ...(hasLinks?["links"]:[]), ...(hasPractice?["practice"]:[]), ...(hasTips?["tips"]:[]), "insight"].map(t=>(
                     <button key={t} style={{flexShrink:0,padding:"8px 10px",background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#7F77DD":"transparent"}`,color:tab===t?"#e2e8f0":"#64748b",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,fontFamily:"inherit",whiteSpace:"nowrap"}}
                       onClick={()=>setTab(t)}>
                       {t==="overview"?"Overview":t==="history"?"⏱ History":t==="links"?"🔗 Links":t==="tips"?"💡 Tips":t==="practice"?"▶ Practice":"✦ AI insight"}
