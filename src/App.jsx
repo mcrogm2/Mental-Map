@@ -612,7 +612,163 @@ const HISTORY = {
   },
 };
 
-// ── Links data — key resources + research, tiered by reading level ────────────
+// ── Tips data — practical "how to apply this" guidance for concepts & skills ──
+const TIPS = {
+  mindfulness: {
+    intro: "Mindfulness is easy to understand and surprisingly easy to do wrong — most people either force stillness or give up after a few seconds of a wandering mind. These tips are about making it sustainable.",
+    tips: [
+      { title: "Anchor it to something you already do", body: "Don't rely on remembering to practice. Attach it to an existing habit — the first sip of coffee, waiting for a page to load, brushing your teeth. The habit becomes the cue." },
+      { title: "Mind-wandering is the practice, not a failure of it", body: "Every time you notice you've drifted and come back, that's a successful rep — like a bicep curl. The 'failure' framing is what makes people quit." },
+      { title: "Shrink it on hard days", body: "On days when sitting still feels impossible, do 30 seconds instead of 10 minutes. Consistency at a small dose beats sporadic effort at a large one." },
+      { title: "Try it with eyes open sometimes", body: "Closed eyes work for some people and feel claustrophobic for others. A soft, unfocused gaze on a fixed point works just as well and feels more accessible in public." },
+    ],
+  },
+
+  defusion: {
+    intro: "Defusion can feel like a parlor trick the first few times — like you're just relabeling a thought rather than changing anything. The shift tends to show up after repeated use, not the first try.",
+    tips: [
+      { title: "Use it on small thoughts first", body: "Don't start with your most painful belief. Practice on mundane thoughts — \"I should clean my desk\" — so the technique feels natural before you bring it to something that matters." },
+      { title: "Say it out loud once", body: "\"I'm having the thought that I'm going to fail this\" sounds different out loud than in your head. The verbal distance often makes the mental distance click faster." },
+      { title: "Pair it with a physical gesture", body: "Some people find it helps to mentally 'place' the thought somewhere — on a cloud, a leaf, a passing train. A consistent visual anchor speeds up the skill over time." },
+      { title: "Don't try to make the thought go away", body: "Defusion isn't about eliminating thoughts — it's about changing your relationship to them. If you're trying to make it disappear, you've slipped back into fighting it." },
+    ],
+  },
+
+  values: {
+    intro: "Values work tends to go wrong in one of two ways: people list what they think they *should* value, or they confuse values with goals. These tips help keep it honest and usable.",
+    tips: [
+      { title: "Notice when you feel most 'yourself'", body: "Rather than brainstorming values abstractly, think of moments you felt fully present and engaged. The value is usually hiding in what you were doing." },
+      { title: "Separate the value from the outcome", body: "\"Being a present parent\" is a value you can act on today. \"Raising successful kids\" is an outcome you can't control. If a value depends on a result, look one layer underneath it." },
+      { title: "Pick one value and one tiny action this week", body: "Values work becomes abstract fast. Anchor it by choosing a single small, concrete action this week that expresses one value — even a five-minute one." },
+      { title: "Expect some values to conflict", body: "Ambition and rest are both legitimate values that will sometimes pull in opposite directions. That tension isn't a sign you're doing it wrong — it's normal and worth naming." },
+    ],
+  },
+
+  "self-compassion": {
+    intro: "Self-compassion is often confused with self-pity or letting yourself off the hook. In practice, it tends to make people more accountable, not less — these tips help it land that way.",
+    tips: [
+      { title: "Talk to yourself like a good coach, not a cheerleader", body: "Self-compassion isn't empty positivity. A good coach is warm but honest: \"That didn't go well, and you're still capable.\" That tone is more sustainable than forced positivity." },
+      { title: "Use the friend test", body: "Ask: what would I say to a close friend in this exact situation? Most people are far kinder to others than themselves — closing that gap is the whole practice." },
+      { title: "Notice common humanity in the moment, not after", body: "When you're struggling, try the thought \"this is a moment of difficulty, and difficulty is part of being human\" right then — not as a retrospective lesson once it's over." },
+      { title: "Physical touch can help it land", body: "A hand on your chest or your own arms wrapped around you sounds strange but has real physiological calming effects — it can make the words feel less abstract." },
+    ],
+  },
+
+  "emotion-reg": {
+    intro: "Emotion regulation isn't about controlling or suppressing feelings — it's about widening the gap between feeling something and acting on it. These tips focus on that gap.",
+    tips: [
+      { title: "Name it specifically", body: "\"I feel bad\" gives you nothing to work with. \"I feel disappointed and a little embarrassed\" gives your brain something specific enough to actually process." },
+      { title: "Check the facts before the feeling", body: "Ask: is this emotion matched to what's actually happening, or is it bigger than the situation calls for? Both answers are useful information, not a verdict." },
+      { title: "Reduce vulnerability factors proactively", body: "Sleep, hunger, and isolation don't cause emotions but they turn up the volume on all of them. If you're regularly overwhelmed, check these basics before assuming it's the situation." },
+      { title: "Opposite action, small dose", body: "If anxiety says avoid, try doing a tiny version of the opposite — approach in some small way. You don't need the full opposite action, just enough to interrupt the pattern." },
+    ],
+  },
+
+  rumination: {
+    intro: "Rumination feels like problem-solving, which is exactly why it's hard to stop — it's disguised as something useful. These tips target that disguise directly.",
+    tips: [
+      { title: "Set a 'worry appointment'", body: "Instead of trying to never think about it, schedule 10 minutes later to think about it on purpose. This sounds counterintuitive but reliably reduces intrusive looping." },
+      { title: "Ask: is this generating any new information?", body: "Real problem-solving produces new insight or a next step. If you've had the same thought five times with no new conclusion, it's rumination, not problem-solving." },
+      { title: "Change your physical position", body: "Rumination often happens in the same posture — lying down, slouched at a desk. Standing up, walking, or even just changing rooms can interrupt the loop more effectively than trying to think your way out." },
+      { title: "Externalize it", body: "Write the looping thought down on paper. Something about getting it out of your head and onto a page tends to loosen its grip, even without resolving it." },
+    ],
+  },
+
+  breathing: {
+    intro: "Box breathing is simple, but small adjustments make a big difference in how effective it feels — these are the tweaks that matter most.",
+    tips: [
+      { title: "Exhale longer than you inhale if anxious", body: "If standard 4-4-4-4 doesn't calm you fast enough, try 4 in, 4 hold, 6-8 out. A longer exhale activates the calming vagus nerve more strongly than equal counts." },
+      { title: "Do it before you need it, not just during crisis", body: "Practicing daily — even when calm — builds the skill so it actually works under real stress. It's much harder to learn a new skill in the middle of a panic spike." },
+      { title: "Use your hand as a visual guide", body: "Trace a square shape in the air or on a surface with your finger as you breathe — visual and physical anchors help when your mind is too activated to just count silently." },
+      { title: "Don't worry about perfect counts", body: "If 4 seconds feels too long or too short, adjust it. The mechanism (slow, controlled, rhythmic breath) matters more than hitting an exact number." },
+    ],
+  },
+
+  grounding: {
+    intro: "Grounding works by engaging the senses, but not every technique works for every person — these tips help you find what actually pulls you back to the present.",
+    tips: [
+      { title: "Test multiple senses, not just sight", body: "5-4-3-2-1 leads with sight, but some people ground faster through touch (textures) or sound (naming distinct noises). If one isn't working, try leading with a different sense." },
+      { title: "Cold works fast when you need speed", body: "Ice water on the wrists, a cold drink, or stepping outside in cold air can ground you in seconds when slower techniques feel too gradual." },
+      { title: "Name out loud, not just in your head", body: "Saying \"I see a red mug, I see a window\" out loud (even quietly) tends to anchor faster than doing it silently — it engages another part of the brain." },
+      { title: "Practice when calm so it's automatic when not", body: "Like any skill, grounding works better in a real crisis if you've rehearsed it when you're not in crisis. Five minutes of practice on an ordinary day builds the pathway." },
+    ],
+  },
+
+  "thought-records": {
+    intro: "Thought records can feel clinical and slow at first — these tips are about making them faster and more natural over time.",
+    tips: [
+      { title: "Start with the emotion, not the thought", body: "It's often easier to notice \"I feel anxious\" first, then work backward to \"what was I just thinking?\" rather than trying to catch the thought directly." },
+      { title: "Look for the distortion family, not the exact label", body: "You don't need to perfectly identify if it's 'catastrophizing' versus 'fortune telling' — just noticing it's an extreme prediction is enough to loosen its grip." },
+      { title: "Write the balanced thought as a question, not a fact", body: "Instead of forcing yourself to believe \"everything will be fine,\" try \"what's actually likely to happen, based on past evidence?\" Questions feel less like lying to yourself." },
+      { title: "Do it within a few hours, not days later", body: "The closer to the moment you record it, the more accurate and useful the thought record is. Memory reconstructs and softens detail quickly." },
+    ],
+  },
+
+  "beh-activation": {
+    intro: "Behavioral activation fails most often when the first step is too big. These tips are about making it nearly impossible to fail at starting.",
+    tips: [
+      { title: "Make the first version embarrassingly small", body: "If \"go for a run\" feels impossible, the goal is \"put on running shoes.\" You can always do more once you've started — starting is the only hard part." },
+      { title: "Schedule it like an appointment", body: "Vague intentions (\"sometime today\") rarely happen. A specific time, even a rough one, dramatically increases follow-through." },
+      { title: "Don't wait to feel motivated", body: "Motivation tends to follow action, not precede it. Waiting to feel ready is often just another form of avoidance dressed up as patience." },
+      { title: "Track the activity, not the mood", body: "Mood is unreliable day to day. Tracking whether you did the activity gives you a cleaner signal of progress than tracking how you felt about it." },
+    ],
+  },
+
+  "distress-tol": {
+    intro: "Distress tolerance skills are built for crisis moments, which means they need to be familiar before the crisis hits. These tips are about pre-loading the skill.",
+    tips: [
+      { title: "Pick your go-to skill in advance", body: "Decide now, while calm, which TIPP skill you'll reach for first in a crisis. Decision-making is much harder mid-crisis — pre-deciding removes a step." },
+      { title: "Keep tools physically accessible", body: "If cold water is your fastest reset, know where the nearest sink or freezer is. If you wait until you need it to find supplies, you lose precious time." },
+      { title: "Use it to get through, not to fix", body: "Distress tolerance skills aren't meant to solve the underlying problem — they're meant to get your nervous system regulated enough to think. Don't judge them by whether the problem disappeared." },
+      { title: "Combine skills if one isn't enough", body: "Cold water plus paced breathing often works faster than either alone. Don't feel locked into using just one TIPP component at a time." },
+    ],
+  },
+
+  "body-scan": {
+    intro: "Body scans can feel boring or pointless at first, especially if you're someone who's used to staying in your head. These tips help it become more textured over time.",
+    tips: [
+      { title: "Numbness is data, not failure", body: "If you can't feel a body part clearly, that's useful information — many people discover entire regions they've been disconnected from for years. Note it and move on, no need to force sensation." },
+      { title: "Slow down more than feels necessary", body: "Most people rush body scans the first few times. Spending what feels like 'too long' on each region is usually closer to the right pace." },
+      { title: "Try it lying down once, sitting once", body: "Body position changes what you notice. Lying down tends to reveal more subtle sensations; sitting can be more practical for daily use." },
+      { title: "Use it as a check-in, not just a full ritual", body: "A 90-second partial scan — just shoulders, jaw, and belly — is a legitimate practice on its own, not just a shortened version of the 'real' thing." },
+    ],
+  },
+};
+
+// ── Tips panel ─────────────────────────────────────────────────────────────────
+function TipsPanel({ nodeId }) {
+  const t = TIPS[nodeId];
+  if (!t) return (
+    <div style={{paddingTop:32,textAlign:"center"}}>
+      <p style={{color:"#475569",fontSize:13,lineHeight:1.7}}>No tips curated yet for this concept.</p>
+    </div>
+  );
+  return (
+    <div>
+      <p style={{fontSize:13.5, lineHeight:1.75, color:"#94a3b8", marginBottom:20}}>{t.intro}</p>
+      {t.tips.map((tip, i) => (
+        <div key={i} style={{
+          display:"flex", gap:12, marginBottom:14,
+          background:"#080c18", border:"1px solid #1a2540", borderRadius:8,
+          padding:"12px 14px",
+        }}>
+          <div style={{
+            flexShrink:0, width:22, height:22, borderRadius:"50%",
+            background:"#F0B42922", border:"1px solid #F0B429",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize:11, fontWeight:700, color:"#F0B429",
+          }}>{i+1}</div>
+          <div>
+            <p style={{fontSize:13.5, fontWeight:600, color:"#e2e8f0", margin:"0 0 4px", lineHeight:1.3}}>{tip.title}</p>
+            <p style={{fontSize:13, lineHeight:1.7, color:"#94a3b8", margin:0}}>{tip.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
 const LINKS = {
   cbt: {
     plainSummary: "CBT is the most studied therapy in the world, so the hardest part isn't finding information — it's knowing where to start. These resources move from accessible overviews to the academic evidence base, so you can go as deep as you want.",
@@ -1366,6 +1522,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
   const hasPractice  = selected && !!PRACTICES[selected];
   const hasHistory   = selected && !!HISTORY[selected];
   const hasLinks     = selected && !!LINKS[selected];
+  const hasTips      = selected && !!TIPS[selected];
 
   const clusterLabels = [
     {x:50,  y:22, text:"Therapy modalities", color:COLORS.modality.fill},
@@ -1653,10 +1810,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",lineHeight:1.25,marginBottom:12,paddingRight:24,letterSpacing:"-0.02em"}}>{selectedNode.full||selectedNode.label.replace("\n"," ")}</div>
                 {/* Tabs */}
                 <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto"}}>
-                  {["overview", ...(hasHistory?["history"]:[]), ...(hasLinks?["links"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
+                  {["overview", ...(hasHistory?["history"]:[]), ...(hasLinks?["links"]:[]), ...(hasTips?["tips"]:[]), ...(hasPractice?["practice"]:[]), "insight"].map(t=>(
                     <button key={t} style={{flexShrink:0,padding:"8px 10px",background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#7F77DD":"transparent"}`,color:tab===t?"#e2e8f0":"#64748b",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,fontFamily:"inherit",whiteSpace:"nowrap"}}
                       onClick={()=>setTab(t)}>
-                      {t==="overview"?"Overview":t==="history"?"⏱ History":t==="links"?"🔗 Links":t==="practice"?"▶ Practice":"✦ AI insight"}
+                      {t==="overview"?"Overview":t==="history"?"⏱ History":t==="links"?"🔗 Links":t==="tips"?"💡 Tips":t==="practice"?"▶ Practice":"✦ AI insight"}
                     </button>
                   ))}
                 </div>
@@ -1713,6 +1870,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 {tab==="practice" && <PracticePanel nodeId={selected}/>}
                 {tab==="history"  && <HistoryPanel  nodeId={selected}/>}
                 {tab==="links"    && <LinksPanel    nodeId={selected}/>}
+                {tab==="tips"     && <TipsPanel     nodeId={selected}/>}
                 {tab==="insight"  && (
                   <div>
                     {loading
