@@ -1023,6 +1023,7 @@ const IFS_PARTS = [
     id: "exile", emoji: "🜸", color: "#D85A30", bg: "#2a1810",
     title: "Exiles", subtitle: "The vulnerable parts",
     body: "Sensitive, often young parts that carry emotional wounds, pain, fear, and shame from past experiences. They're typically frozen in time at the age the trauma occurred.",
+    relation: "protected-by-protectors",
   },
   {
     id: "manager", emoji: "⛨", color: "#378ADD", bg: "#0c2236",
@@ -1033,6 +1034,7 @@ const IFS_PARTS = [
       { name: "The Controller", desc: "Motivates and manages to avoid failure" },
       { name: "The People Pleaser", desc: "Keeps others happy to maintain safety" },
     ],
+    relation: "guards-exile",
   },
   {
     id: "firefighter", emoji: "🔥", color: "#F0B429", bg: "#2e2310",
@@ -1043,30 +1045,138 @@ const IFS_PARTS = [
       { name: "The Rager", desc: "Erupts with overwhelming energy to externalize pain" },
       { name: "The Addicted", desc: "Turns to substances or impulsive behavior to escape" },
     ],
+    relation: "rescues-exile",
   },
 ];
+
+// ── Small inline diagrams per card ──────────────────────────────────────────────
+// Self gets the full system map (Self in center, three part-types radiating out).
+// Each part card gets a 2-node "relation" diagram showing how it connects to Exiles.
+function SelfSystemDiagram({ size }) {
+  const r = size === "sm" ? 70 : 100;
+  const W = r * 2.6, H = r * 2.4;
+  const cx = W/2, cy = H/2 + 6;
+  const nodeR = size === "sm" ? 13 : 17;
+  const orbit = r * 0.92;
+  const nodes = [
+    { label:"Exiles", color:"#D85A30", angle:-90 },
+    { label:"Managers", color:"#378ADD", angle:30 },
+    { label:"Firefighters", color:"#F0B429", angle:150 },
+  ];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{maxHeight: size==="sm"?150:210, display:"block", margin:"0 auto"}}>
+      {nodes.map((n,i) => {
+        const rad = (n.angle * Math.PI) / 180;
+        const nx = cx + Math.cos(rad)*orbit, ny = cy + Math.sin(rad)*orbit;
+        return (
+          <g key={i}>
+            <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="#3a3568" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.7"/>
+          </g>
+        );
+      })}
+      {nodes.map((n,i) => {
+        const rad = (n.angle * Math.PI) / 180;
+        const nx = cx + Math.cos(rad)*orbit, ny = cy + Math.sin(rad)*orbit;
+        return (
+          <g key={i} transform={`translate(${nx},${ny})`}>
+            <circle r={nodeR} fill={n.color} opacity="0.9"/>
+            <text textAnchor="middle" dy={nodeR + 13} fontSize={size==="sm"?9:10.5} fill="#94a3b8" fontFamily="Inter,sans-serif">{n.label}</text>
+          </g>
+        );
+      })}
+      <circle cx={cx} cy={cy} r={nodeR*1.5} fill="#7F77DD"/>
+      <text x={cx} y={cy+1} textAnchor="middle" dominantBaseline="middle" fontSize={size==="sm"?11:13} fontWeight="700" fill="#fff" fontFamily="Inter,sans-serif">Self</text>
+    </svg>
+  );
+}
+
+function RelationDiagram({ part, size }) {
+  const W = 220, H = size==="sm" ? 70 : 86;
+  const nodeR = size==="sm" ? 16 : 20;
+  const exileX = part.relation === "protected-by-protectors" ? W*0.78 : W*0.22;
+  const partX  = part.relation === "protected-by-protectors" ? W*0.22 : W*0.78;
+  const cy = H/2;
+  const label = part.relation === "guards-exile" ? "shields"
+              : part.relation === "rescues-exile" ? "rescues"
+              : "carries pain";
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{maxHeight:H+10, display:"block", margin:"0 auto"}}>
+      <line x1={partX} y1={cy} x2={exileX} y2={cy} stroke={part.color} strokeWidth="2" strokeOpacity="0.55" strokeDasharray="2 5"/>
+      <text x={(partX+exileX)/2} y={cy-10} textAnchor="middle" fontSize={size==="sm"?9.5:10.5} fill="#94a3b8" fontFamily="Inter,sans-serif">{label} →</text>
+
+      <g transform={`translate(${partX},${cy})`}>
+        <circle r={nodeR} fill={part.color}/>
+        <text textAnchor="middle" dominantBaseline="middle" fontSize={size==="sm"?12:14} fill="#fff">{part.emoji}</text>
+        <text textAnchor="middle" dy={nodeR+13} fontSize={size==="sm"?9:10} fill="#cbd5e1" fontFamily="Inter,sans-serif">{part.title}</text>
+      </g>
+      <g transform={`translate(${exileX},${cy})`}>
+        <circle r={nodeR} fill="#D85A30"/>
+        <text textAnchor="middle" dominantBaseline="middle" fontSize={size==="sm"?12:14} fill="#fff">🜸</text>
+        <text textAnchor="middle" dy={nodeR+13} fontSize={size==="sm"?9:10} fill="#cbd5e1" fontFamily="Inter,sans-serif">Exiles</text>
+      </g>
+    </svg>
+  );
+}
 
 function IFSFeed({ fullscreen }) {
   const [active, setActive] = useState(0);
   const [liked, setLiked] = useState({});
+  const [dir, setDir] = useState(0); // +1 next, -1 prev — drives slide direction
   const part = IFS_PARTS[active];
   const toggleLike = (id) => setLiked(p => ({...p, [id]: !p[id]}));
 
-  const cardMinHeight = fullscreen ? 480 : 360;
-  const iconSize = fullscreen ? 110 : 76;
+  const cardMinHeight = fullscreen ? 520 : 400;
+  const iconSize = fullscreen ? 64 : 46;
+
+  const goTo = (i) => {
+    if (i === active) return;
+    setDir(i > active ? 1 : -1);
+    setActive(i);
+  };
+  const next = () => goTo((active + 1) % IFS_PARTS.length);
+  const prev = () => goTo((active - 1 + IFS_PARTS.length) % IFS_PARTS.length);
+
+  // ── Swipe gesture ──────────────────────────────────────────────────────────
+  const touchRef = useRef(null);
+  const onTouchStart = (e) => { touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+  const onTouchEnd = (e) => {
+    if (!touchRef.current) return;
+    const dx = e.changedTouches[0].clientX - touchRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchRef.current.y;
+    touchRef.current = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.3) return; // not a horizontal swipe
+    e.stopPropagation();
+    if (dx < 0) next(); else prev();
+  };
 
   return (
     <div style={{maxWidth: fullscreen ? 420 : "100%", margin: fullscreen ? "0 auto" : 0}}>
-      <div style={{
-        background: part.bg, borderRadius: 18, padding: fullscreen ? "26px 22px 20px" : "20px 16px 16px",
-        border: `1px solid ${part.color}33`, position:"relative", overflow:"hidden",
-        minHeight: cardMinHeight, display:"flex", flexDirection:"column",
-        transition:"background 0.3s ease, border-color 0.3s ease"
-      }}>
-        <div style={{display:"flex", alignItems:"center", gap:10, marginBottom: fullscreen?18:14}}>
+      <style>{`
+        @keyframes ifsBreathe { 0%,100% { transform: scale(1); opacity:0.9; } 50% { transform: scale(1.06); opacity:1; } }
+        @keyframes ifsSlideInR { from { opacity:0; transform: translateX(24px); } to { opacity:1; transform: translateX(0); } }
+        @keyframes ifsSlideInL { from { opacity:0; transform: translateX(-24px); } to { opacity:1; transform: translateX(0); } }
+        @keyframes ifsFadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes ifsDashFlow { to { stroke-dashoffset: -20; } }
+      `}</style>
+
+      <div
+        key={part.id}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        style={{
+          background: part.bg, borderRadius: 18, padding: fullscreen ? "26px 22px 20px" : "18px 16px 16px",
+          border: `1px solid ${part.color}33`, position:"relative", overflow:"hidden",
+          minHeight: cardMinHeight, display:"flex", flexDirection:"column",
+          transition:"background 0.3s ease, border-color 0.3s ease",
+          animation: `${dir >= 0 ? "ifsSlideInR" : "ifsSlideInL"} 0.32s ease`,
+          touchAction: "pan-y",
+        }}
+      >
+        <div style={{display:"flex", alignItems:"center", gap:10, marginBottom: fullscreen?14:10, animation:"ifsFadeUp 0.35s ease"}}>
           <div style={{
-            width: fullscreen?38:32, height: fullscreen?38:32, borderRadius:"50%", background:part.color,
-            display:"flex", alignItems:"center", justifyContent:"center", fontSize: fullscreen?18:15, flexShrink:0
+            width: fullscreen?34:28, height: fullscreen?34:28, borderRadius:"50%", background:part.color,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize: fullscreen?16:13, flexShrink:0,
+            animation:"ifsBreathe 3.2s ease-in-out infinite",
           }}>{part.emoji}</div>
           <div>
             <p style={{margin:0, fontSize: fullscreen?13:12, fontWeight:600, color:"#fff"}}>{part.title}</p>
@@ -1074,16 +1184,18 @@ function IFSFeed({ fullscreen }) {
           </div>
         </div>
 
-        <div style={{
-          flex: fullscreen ? 1 : "0 0 auto", display:"flex", alignItems:"center", justifyContent:"center",
-          fontSize: iconSize, opacity:0.9, marginBottom: fullscreen?18:14,
-          minHeight: fullscreen ? undefined : 90,
-        }}>{part.emoji}</div>
+        {/* Diagram block — system map for Self, relation diagram for parts */}
+        <div style={{marginBottom: fullscreen?14:10, animation:"ifsFadeUp 0.4s ease"}}>
+          {part.id === "self"
+            ? <SelfSystemDiagram size={fullscreen?"lg":"sm"}/>
+            : <RelationDiagram part={part} size={fullscreen?"lg":"sm"}/>
+          }
+        </div>
 
-        <p style={{fontSize: fullscreen?14:12.5, lineHeight:1.6, color:"#e2e8f0", margin:"0 0 12px"}}>{part.body}</p>
+        <p style={{fontSize: fullscreen?14:12.5, lineHeight:1.6, color:"#e2e8f0", margin:"0 0 12px", animation:"ifsFadeUp 0.45s ease"}}>{part.body}</p>
 
         {part.qualities && (
-          <div style={{display:"flex", flexWrap:"wrap", gap:6, marginBottom:14}}>
+          <div style={{display:"flex", flexWrap:"wrap", gap:6, marginBottom:14, animation:"ifsFadeUp 0.5s ease"}}>
             {part.qualities.map(q=>(
               <span key={q} style={{
                 fontSize: fullscreen?11.5:10.5, padding:"3px 9px", borderRadius:20,
@@ -1094,7 +1206,7 @@ function IFSFeed({ fullscreen }) {
         )}
 
         {part.examples && (
-          <div style={{display:"flex", flexDirection:"column", gap:7, marginBottom:14}}>
+          <div style={{display:"flex", flexDirection:"column", gap:7, marginBottom:14, animation:"ifsFadeUp 0.5s ease"}}>
             {part.examples.map((ex,i) => (
               <div key={i} style={{
                 background:"rgba(255,255,255,0.06)", borderRadius:10, padding: fullscreen?"8px 12px":"7px 10px"
@@ -1112,19 +1224,20 @@ function IFSFeed({ fullscreen }) {
             color: liked[part.id] ? "#D4537E" : "#94a3b8", fontFamily:"inherit"
           }}>♥</button>
           <span style={{fontSize:11, color:"#64748b"}}>Resonates with {liked[part.id]?1:0} of you</span>
+          <span style={{marginLeft:"auto", fontSize:10, color:"#475569"}}>Swipe →</span>
         </div>
       </div>
 
       <div style={{display:"flex", justifyContent:"center", gap:6, marginTop:12}}>
         {IFS_PARTS.map((p,i)=>(
-          <button key={p.id} onClick={()=>setActive(i)} style={{
+          <button key={p.id} onClick={()=>goTo(i)} style={{
             width: i===active?20:8, height:8, borderRadius:4, border:"none", cursor:"pointer",
             background: i===active ? p.color : "#334155", transition:"all 0.25s ease"
           }}/>
         ))}
       </div>
       <p style={{textAlign:"center", fontSize: fullscreen?11:10, color:"#475569", marginTop:8}}>
-        Tap a dot to meet the next part →
+        Swipe or tap a dot to meet the next part →
       </p>
     </div>
   );
