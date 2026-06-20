@@ -1008,7 +1008,129 @@ const LEVEL_COLORS = {
   Academic: { bg:"#2a1810", border:"#D85A30", text:"#F0997B" },
 };
 
-// ── Links panel ────────────────────────────────────────────────────────────────
+// ── IFS swipeable character feed ───────────────────────────────────────────────
+// An Instagram-Stories-style feed specific to IFS — each "part" of the internal
+// family gets a full card, swipeable/tappable through dots. Lives on the
+// Overview tab for the ifs node only.
+const IFS_PARTS = [
+  {
+    id: "self", emoji: "✦", color: "#7F77DD", bg: "#1a1530",
+    title: "The Core Self", subtitle: "Always present, never damaged",
+    body: "At the deepest center of every person is the core Self. It is unburdened by trauma, cannot be damaged, and serves as the compassionate leader of your internal system.",
+    qualities: ["Calmness","Curiosity","Clarity","Compassion","Confidence","Courage","Creativity","Connectedness","Choice"],
+  },
+  {
+    id: "exile", emoji: "🜸", color: "#D85A30", bg: "#2a1810",
+    title: "Exiles", subtitle: "The vulnerable parts",
+    body: "Sensitive, often young parts that carry emotional wounds, pain, fear, and shame from past experiences. They're typically frozen in time at the age the trauma occurred.",
+  },
+  {
+    id: "manager", emoji: "⛨", color: "#378ADD", bg: "#0c2236",
+    title: "Managers", subtitle: "Proactive protectors",
+    body: "Attempt to keep your life, emotions, and environment controlled and predictable so Exiles are never triggered in the first place.",
+    examples: [
+      { name: "The Inner Critic", desc: "Pushes you to be flawless" },
+      { name: "The Controller", desc: "Motivates and manages to avoid failure" },
+      { name: "The People Pleaser", desc: "Keeps others happy to maintain safety" },
+    ],
+  },
+  {
+    id: "firefighter", emoji: "🔥", color: "#F0B429", bg: "#2e2310",
+    title: "Firefighters", subtitle: "Reactive protectors",
+    body: "Jump in when an exile's pain breaks through. They act impulsively to distract, numb, or soothe the system fast.",
+    examples: [
+      { name: "The Numbing Agent", desc: "Causes dissociation or avoidance" },
+      { name: "The Rager", desc: "Erupts with overwhelming energy to externalize pain" },
+      { name: "The Addicted", desc: "Turns to substances or impulsive behavior to escape" },
+    ],
+  },
+];
+
+function IFSFeed({ fullscreen }) {
+  const [active, setActive] = useState(0);
+  const [liked, setLiked] = useState({});
+  const part = IFS_PARTS[active];
+  const toggleLike = (id) => setLiked(p => ({...p, [id]: !p[id]}));
+
+  const cardMinHeight = fullscreen ? 480 : 360;
+  const iconSize = fullscreen ? 110 : 76;
+
+  return (
+    <div style={{maxWidth: fullscreen ? 420 : "100%", margin: fullscreen ? "0 auto" : 0}}>
+      <div style={{
+        background: part.bg, borderRadius: 18, padding: fullscreen ? "26px 22px 20px" : "20px 16px 16px",
+        border: `1px solid ${part.color}33`, position:"relative", overflow:"hidden",
+        minHeight: cardMinHeight, display:"flex", flexDirection:"column",
+        transition:"background 0.3s ease, border-color 0.3s ease"
+      }}>
+        <div style={{display:"flex", alignItems:"center", gap:10, marginBottom: fullscreen?18:14}}>
+          <div style={{
+            width: fullscreen?38:32, height: fullscreen?38:32, borderRadius:"50%", background:part.color,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize: fullscreen?18:15, flexShrink:0
+          }}>{part.emoji}</div>
+          <div>
+            <p style={{margin:0, fontSize: fullscreen?13:12, fontWeight:600, color:"#fff"}}>{part.title}</p>
+            <p style={{margin:0, fontSize: fullscreen?11:10, color:"#94a3b8"}}>{part.subtitle}</p>
+          </div>
+        </div>
+
+        <div style={{
+          flex: fullscreen ? 1 : "0 0 auto", display:"flex", alignItems:"center", justifyContent:"center",
+          fontSize: iconSize, opacity:0.9, marginBottom: fullscreen?18:14,
+          minHeight: fullscreen ? undefined : 90,
+        }}>{part.emoji}</div>
+
+        <p style={{fontSize: fullscreen?14:12.5, lineHeight:1.6, color:"#e2e8f0", margin:"0 0 12px"}}>{part.body}</p>
+
+        {part.qualities && (
+          <div style={{display:"flex", flexWrap:"wrap", gap:6, marginBottom:14}}>
+            {part.qualities.map(q=>(
+              <span key={q} style={{
+                fontSize: fullscreen?11.5:10.5, padding:"3px 9px", borderRadius:20,
+                background:"rgba(255,255,255,0.08)", color:"#cbd5e1"
+              }}>{q}</span>
+            ))}
+          </div>
+        )}
+
+        {part.examples && (
+          <div style={{display:"flex", flexDirection:"column", gap:7, marginBottom:14}}>
+            {part.examples.map((ex,i) => (
+              <div key={i} style={{
+                background:"rgba(255,255,255,0.06)", borderRadius:10, padding: fullscreen?"8px 12px":"7px 10px"
+              }}>
+                <span style={{fontSize: fullscreen?12.5:11.5, fontWeight:600, color: part.color}}>{ex.name}</span>
+                <span style={{fontSize: fullscreen?12:11, color:"#94a3b8"}}> — {ex.desc}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{display:"flex", alignItems:"center", gap:14, paddingTop:8, marginTop:"auto", borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+          <button onClick={()=>toggleLike(part.id)} style={{
+            background:"none", border:"none", cursor:"pointer", fontSize:18,
+            color: liked[part.id] ? "#D4537E" : "#94a3b8", fontFamily:"inherit"
+          }}>♥</button>
+          <span style={{fontSize:11, color:"#64748b"}}>Resonates with {liked[part.id]?1:0} of you</span>
+        </div>
+      </div>
+
+      <div style={{display:"flex", justifyContent:"center", gap:6, marginTop:12}}>
+        {IFS_PARTS.map((p,i)=>(
+          <button key={p.id} onClick={()=>setActive(i)} style={{
+            width: i===active?20:8, height:8, borderRadius:4, border:"none", cursor:"pointer",
+            background: i===active ? p.color : "#334155", transition:"all 0.25s ease"
+          }}/>
+        ))}
+      </div>
+      <p style={{textAlign:"center", fontSize: fullscreen?11:10, color:"#475569", marginTop:8}}>
+        Tap a dot to meet the next part →
+      </p>
+    </div>
+  );
+}
+
+
 function LinksPanel({ nodeId }) {
   const l = LINKS[nodeId];
   if (!l) return (
@@ -1343,6 +1465,7 @@ export default function MentalMap() {
   const [selected, setSelected]   = useState(null);
   const [breadcrumb, setBreadcrumb] = useState([]);
   const [tab, setTab]             = useState("overview");
+  const [overviewFullscreen, setOverviewFullscreen] = useState(false);
   const [insight, setInsight]     = useState("");
   const [loading, setLoading]     = useState(false);
   const insightCache = useRef({});
@@ -1761,6 +1884,7 @@ export default function MentalMap() {
     selectedRef.current = id;
     setSelected(id);
     setTab("overview");
+    setOverviewFullscreen(false);
     setInsight(insightCache.current[id] || "");
     setBreadcrumb(prev => [...prev.filter(x=>x!==id).slice(-3), id]);
     // On mobile, start with panel collapsed so map stays visible
@@ -1819,6 +1943,7 @@ export default function MentalMap() {
     selectedRef.current = null;
     setSelected(null);
     setBreadcrumb([]);
+    setOverviewFullscreen(false);
     setInsight("");
     setTooltip(null);
     setPanelCollapsed(false);
@@ -2286,6 +2411,23 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                   <div>
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
                     <div style={{fontSize:13,lineHeight:1.75,color:"#cbd5e1",whiteSpace:"pre-line",background:"#080c18",borderRadius:8,padding:"12px 14px",marginBottom:14,border:"1px solid #1a2540"}}>{selectedNode.content}</div>
+
+                    {/* IFS character feed — Instagram-style swipeable cards */}
+                    {selected === "ifs" && (
+                      <div style={{marginBottom:14}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                          <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:0}}>Meet the parts</p>
+                          <button onClick={()=>setOverviewFullscreen(true)} style={{
+                            display:"flex",alignItems:"center",gap:4,background:"none",border:"1px solid #1a2540",
+                            borderRadius:7,padding:"4px 9px",color:"#94a3b8",fontSize:11,cursor:"pointer",fontFamily:"inherit"
+                          }}>
+                            ⤢ Fullscreen
+                          </button>
+                        </div>
+                        <IFSFeed fullscreen={false}/>
+                      </div>
+                    )}
+
                     {(selectedNode.links||[]).length > 0 && (
                       <div style={{marginBottom:14}}>
                         <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",marginBottom:8}}>Related</p>
@@ -2357,6 +2499,34 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           </div>
         )}
       </div>
+
+      {/* Overview fullscreen overlay — map/tabs stay mounted underneath,
+          this just sits on top so a back button returns instantly */}
+      {overviewFullscreen && selectedNode && (
+        <div style={{
+          position:"fixed", top:0, left:0, right:0, bottom:0, zIndex:100,
+          background:"#0a0f1e", display:"flex", flexDirection:"column",
+          overflowY:"auto", WebkitOverflowScrolling:"touch",
+        }}>
+          <div style={{
+            display:"flex", alignItems:"center", gap:10, padding:"14px 16px",
+            borderBottom:"1px solid #1a2540", flexShrink:0, position:"sticky", top:0,
+            background:"#0a0f1e", zIndex:2,
+          }}>
+            <button onClick={()=>setOverviewFullscreen(false)} style={{
+              display:"flex", alignItems:"center", gap:6, background:"none",
+              border:"1px solid #1a2540", borderRadius:8, padding:"6px 12px",
+              color:"#94a3b8", fontSize:13, cursor:"pointer", fontFamily:"inherit"
+            }}>‹ Back to map</button>
+            <span style={{fontSize:13, fontWeight:600, color:"#f1f5f9"}}>
+              {selectedNode.full || selectedNode.label.replace("\n"," ")}
+            </span>
+          </div>
+          <div style={{flex:1, padding:"24px 16px 60px"}}>
+            <IFSFeed fullscreen={true}/>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
