@@ -1258,18 +1258,21 @@ const SOMATIC_PRACTICES = [
     title: "Tracking Sensation", subtitle: "Following the body's felt sense",
     body: "Rather than talking about what happened, SE asks: what do you notice in your body right now? Tracking builds interoceptive awareness — the foundation every other SE technique relies on.",
     diagram: "body",
+    tryIt: "Pause right now and scan from head to feet. Where do you notice warmth, tightness, ease, or nothing at all? Just notice — no need to change it.",
   },
   {
     id: "titration", emoji: "○", color: "#7F77DD", bg: "#1a1530",
     title: "Titration", subtitle: "Working in small, safe doses",
-    body: "Touching traumatic material all at once can overwhelm the system. Titration means approaching it in small, manageable increments — like cracking a door instead of throwing it open.",
+    body: "Leaning into emotions that follow trauma all at once can overwhelm the system. Titration means approaching it in small, manageable increments — like cracking a door instead of throwing it open. When you swim out to sea, you want to make sure you have enough energy to get back to the shore.",
     diagram: "dose",
+    tryIt: "Let yourself feel a difficult emotion for just a few seconds, then pull back to something neutral or pleasant. A small dose is enough — you don't need the whole wave at once.",
   },
   {
     id: "pendulation", emoji: "↔", color: "#F0B429", bg: "#2e2310",
     title: "Pendulation", subtitle: "Moving between ease and activation",
     body: "The nervous system heals by rhythmically moving between a felt sense of safety and brief contact with activation, then back to safety again — like a pendulum, never staying too long in distress.",
     diagram: "pendulum",
+    tryIt: "Sit with the emotion that follows trauma, then shift focus to something that brings you peace — a good memory, a safe moment. Then visit the strong emotion again, let it be present, and repeat.",
   },
 ];
 
@@ -1419,6 +1422,20 @@ function SomaticFeed({ fullscreen }) {
         </div>
 
         <p style={{fontSize: fullscreen?14:12.5, lineHeight:1.6, color:"#e2e8f0", margin:"0 0 12px", animation:"somFadeUp 0.45s ease"}}>{practice.body}</p>
+
+        {practice.tryIt && (
+          <div style={{
+            background: "rgba(45,212,191,0.10)", // teal tint — distinct hue from any card's own color
+            border: "1px solid rgba(45,212,191,0.35)",
+            borderRadius: 10, padding: fullscreen?"11px 13px":"10px 12px",
+            marginBottom: 14, animation:"somFadeUp 0.5s ease",
+          }}>
+            <p style={{margin:0, fontSize: fullscreen?12.5:11.5, lineHeight:1.55, color:"#99f6e4"}}>
+              <span style={{fontWeight:700, color:"#5eead4"}}>Try: </span>
+              {practice.tryIt}
+            </p>
+          </div>
+        )}
 
         <div style={{display:"flex", alignItems:"center", gap:14, paddingTop:8, marginTop:"auto", borderTop:"1px solid rgba(255,255,255,0.08)"}}>
           <button onClick={()=>toggleLike(practice.id)} style={{
