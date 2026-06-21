@@ -560,7 +560,7 @@ const NODES = [
 
   {id:"somatic",label:"Somatic",       full:"Somatic Experiencing",          type:"modality",   x:120,y:570,
    summary:"Body-oriented therapy that releases trauma held in the nervous system.",
-   content:"Developed by Peter Levine, SE focuses on body sensation rather than narrative. Clients learn to track and discharge incomplete survival responses.\n\nKey concepts: titration (small doses), pendulation (moving between ease and activation).",
+   content:"Developed by Peter Levine, SE focuses on body sensation rather than narrative. Clients learn to track and discharge incomplete survival responses.\n\nFour core practices work together: understanding the fight/flight/freeze response, tracking bodily sensation, titration (small doses), and pendulation (moving between ease and activation). Explore each below.",
    links:["grounding","mindfulness","trauma","anxiety"]},
 
   {id:"mindfulness",    label:"Mindfulness",      type:"concept", x:410,y:115,
@@ -1238,6 +1238,208 @@ function IFSFeed({ fullscreen }) {
       </div>
       <p style={{textAlign:"center", fontSize: fullscreen?11:10, color:"#475569", marginTop:8}}>
         Swipe or tap a dot to meet the next part →
+      </p>
+    </div>
+  );
+}
+
+// ── Somatic Experiencing swipeable practice feed ───────────────────────────────
+// Mirrors the IFS feed pattern, but content is the four core SE practices rather
+// than internal "parts" — each gets its own small diagram suited to the concept.
+const SOMATIC_PRACTICES = [
+  {
+    id: "ffr", emoji: "⚡", color: "#D85A30", bg: "#2a1810",
+    title: "Fight, Flight, Freeze", subtitle: "The nervous system's survival responses",
+    body: "When we sense danger, the body automatically prepares to fight, flee, or freeze. Trauma occurs when one of these responses can't complete — the energy stays mobilized in the body long after the danger has passed.",
+    diagram: "arousal",
+  },
+  {
+    id: "tracking", emoji: "◉", color: "#378ADD", bg: "#0c2236",
+    title: "Tracking Sensation", subtitle: "Following the body's felt sense",
+    body: "Rather than talking about what happened, SE asks: what do you notice in your body right now? Tracking builds interoceptive awareness — the foundation every other SE technique relies on.",
+    diagram: "body",
+  },
+  {
+    id: "titration", emoji: "○", color: "#7F77DD", bg: "#1a1530",
+    title: "Titration", subtitle: "Working in small, safe doses",
+    body: "Touching traumatic material all at once can overwhelm the system. Titration means approaching it in small, manageable increments — like cracking a door instead of throwing it open.",
+    diagram: "dose",
+  },
+  {
+    id: "pendulation", emoji: "↔", color: "#F0B429", bg: "#2e2310",
+    title: "Pendulation", subtitle: "Moving between ease and activation",
+    body: "The nervous system heals by rhythmically moving between a felt sense of safety and brief contact with activation, then back to safety again — like a pendulum, never staying too long in distress.",
+    diagram: "pendulum",
+  },
+];
+
+function ArousalDiagram({ size }) {
+  const W = 220, H = size==="sm"?64:80;
+  const midY = H/2;
+  const path = `M0,${midY} Q${W*0.18},${midY-22} ${W*0.32},${midY-10} T${W*0.55},${midY+18} T${W*0.78},${midY-14} T${W},${midY+4}`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{maxHeight:H+10, display:"block", margin:"0 auto"}}>
+      <line x1="0" y1={midY} x2={W} y2={midY} stroke="#334155" strokeWidth="1" strokeDasharray="2 4"/>
+      <path d={path} fill="none" stroke="#D85A30" strokeWidth="2.5" strokeLinecap="round"/>
+      <text x="6" y={H-4} fontSize={size==="sm"?8.5:9.5} fill="#94a3b8" fontFamily="Inter,sans-serif">calm</text>
+      <text x={W-46} y={H-4} fontSize={size==="sm"?8.5:9.5} fill="#94a3b8" fontFamily="Inter,sans-serif">activated</text>
+    </svg>
+  );
+}
+
+function BodyTrackingDiagram({ size }) {
+  const s = size==="sm" ? 0.8 : 1;
+  const H = 96 * s;
+  const spots = [
+    { cy: 16*s, r: 9*s },   // head
+    { cy: 38*s, r: 13*s },  // chest
+    { cy: 62*s, r: 11*s },  // belly
+  ];
+  return (
+    <svg viewBox={`0 0 80 ${H+10}`} width="100%" style={{maxHeight:H+20, display:"block", margin:"0 auto"}}>
+      <line x1="40" y1={4*s} x2="40" y2={80*s} stroke="#334155" strokeWidth={3*s} strokeLinecap="round" opacity="0.4"/>
+      {spots.map((sp,i)=>(
+        <circle key={i} cx="40" cy={sp.cy+10} r={sp.r} fill="#378ADD" opacity={0.35 + i*0.18}/>
+      ))}
+      <circle cx="40" cy={spots[1].cy+10} r={spots[1].r} fill="none" stroke="#85B7EB" strokeWidth="1.5" opacity="0.8">
+        <animate attributeName="r" values={`${spots[1].r};${spots[1].r*1.5};${spots[1].r}`} dur="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.8;0;0.8" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
+  );
+}
+
+function TitrationDiagram({ size }) {
+  const W = 220, H = size==="sm"?54:66;
+  const doses = [8, 13, 18, 24];
+  const gap = W / (doses.length + 1);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{maxHeight:H+10, display:"block", margin:"0 auto"}}>
+      {doses.map((r,i) => (
+        <circle key={i} cx={gap*(i+1)} cy={H/2} r={r/2} fill="none" stroke="#7F77DD" strokeWidth="2" opacity={0.4 + i*0.15}/>
+      ))}
+      <text x={W/2} y={H-2} textAnchor="middle" fontSize={size==="sm"?8.5:9.5} fill="#94a3b8" fontFamily="Inter,sans-serif">small doses, building gradually →</text>
+    </svg>
+  );
+}
+
+function PendulationDiagram({ size }) {
+  const W = 220, H = size==="sm"?70:86;
+  const midY = H/2 - 6;
+  const amp = size==="sm"?20:26;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{maxHeight:H+10, display:"block", margin:"0 auto"}}>
+      <line x1="20" y1={midY} x2={W-20} y2={midY} stroke="#334155" strokeWidth="1" strokeDasharray="2 4"/>
+      <path d={`M20,${midY} Q${W*0.3},${midY-amp} ${W/2},${midY} T${W-20},${midY}`} fill="none" stroke="#F0B429" strokeWidth="2.5" strokeLinecap="round"/>
+      <circle r="6" fill="#F0B429">
+        <animateMotion dur="3.5s" repeatCount="indefinite"
+          path={`M20,${midY} Q${W*0.3},${midY-amp} ${W/2},${midY} T${W-20},${midY}`}/>
+      </circle>
+      <text x="20" y={H-2} fontSize={size==="sm"?8.5:9.5} fill="#94a3b8" fontFamily="Inter,sans-serif">ease</text>
+      <text x={W-46} y={H-2} fontSize={size==="sm"?8.5:9.5} fill="#94a3b8" fontFamily="Inter,sans-serif">activation</text>
+    </svg>
+  );
+}
+
+function SomaticDiagram({ practice, size }) {
+  switch (practice.diagram) {
+    case "arousal": return <ArousalDiagram size={size}/>;
+    case "body": return <BodyTrackingDiagram size={size}/>;
+    case "dose": return <TitrationDiagram size={size}/>;
+    case "pendulum": return <PendulationDiagram size={size}/>;
+    default: return null;
+  }
+}
+
+function SomaticFeed({ fullscreen }) {
+  const [active, setActive] = useState(0);
+  const [liked, setLiked] = useState({});
+  const [dir, setDir] = useState(0);
+  const practice = SOMATIC_PRACTICES[active];
+  const toggleLike = (id) => setLiked(p => ({...p, [id]: !p[id]}));
+
+  const cardMinHeight = fullscreen ? 520 : 400;
+
+  const goTo = (i) => {
+    if (i === active) return;
+    setDir(i > active ? 1 : -1);
+    setActive(i);
+  };
+  const next = () => goTo((active + 1) % SOMATIC_PRACTICES.length);
+  const prev = () => goTo((active - 1 + SOMATIC_PRACTICES.length) % SOMATIC_PRACTICES.length);
+
+  const touchRef = useRef(null);
+  const onTouchStart = (e) => { touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+  const onTouchEnd = (e) => {
+    if (!touchRef.current) return;
+    const dx = e.changedTouches[0].clientX - touchRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchRef.current.y;
+    touchRef.current = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+    e.stopPropagation();
+    if (dx < 0) next(); else prev();
+  };
+
+  return (
+    <div style={{maxWidth: fullscreen ? 420 : "100%", margin: fullscreen ? "0 auto" : 0}}>
+      <style>{`
+        @keyframes somBreathe { 0%,100% { transform: scale(1); opacity:0.9; } 50% { transform: scale(1.06); opacity:1; } }
+        @keyframes somSlideInR { from { opacity:0; transform: translateX(24px); } to { opacity:1; transform: translateX(0); } }
+        @keyframes somSlideInL { from { opacity:0; transform: translateX(-24px); } to { opacity:1; transform: translateX(0); } }
+        @keyframes somFadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+      `}</style>
+
+      <div
+        key={practice.id}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        style={{
+          background: practice.bg, borderRadius: 18, padding: fullscreen ? "26px 22px 20px" : "18px 16px 16px",
+          border: `1px solid ${practice.color}33`, position:"relative", overflow:"hidden",
+          minHeight: cardMinHeight, display:"flex", flexDirection:"column",
+          transition:"background 0.3s ease, border-color 0.3s ease",
+          animation: `${dir >= 0 ? "somSlideInR" : "somSlideInL"} 0.32s ease`,
+          touchAction: "pan-y",
+        }}
+      >
+        <div style={{display:"flex", alignItems:"center", gap:10, marginBottom: fullscreen?14:10, animation:"somFadeUp 0.35s ease"}}>
+          <div style={{
+            width: fullscreen?34:28, height: fullscreen?34:28, borderRadius:"50%", background:practice.color,
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize: fullscreen?16:13, flexShrink:0,
+            animation:"somBreathe 3.2s ease-in-out infinite",
+          }}>{practice.emoji}</div>
+          <div>
+            <p style={{margin:0, fontSize: fullscreen?13:12, fontWeight:600, color:"#fff"}}>{practice.title}</p>
+            <p style={{margin:0, fontSize: fullscreen?11:10, color:"#94a3b8"}}>{practice.subtitle}</p>
+          </div>
+        </div>
+
+        <div style={{marginBottom: fullscreen?14:10, animation:"somFadeUp 0.4s ease"}}>
+          <SomaticDiagram practice={practice} size={fullscreen?"lg":"sm"}/>
+        </div>
+
+        <p style={{fontSize: fullscreen?14:12.5, lineHeight:1.6, color:"#e2e8f0", margin:"0 0 12px", animation:"somFadeUp 0.45s ease"}}>{practice.body}</p>
+
+        <div style={{display:"flex", alignItems:"center", gap:14, paddingTop:8, marginTop:"auto", borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+          <button onClick={()=>toggleLike(practice.id)} style={{
+            background:"none", border:"none", cursor:"pointer", fontSize:18,
+            color: liked[practice.id] ? "#D4537E" : "#94a3b8", fontFamily:"inherit"
+          }}>♥</button>
+          <span style={{fontSize:11, color:"#64748b"}}>Resonates with {liked[practice.id]?1:0} of you</span>
+          <span style={{marginLeft:"auto", fontSize:10, color:"#475569"}}>Swipe →</span>
+        </div>
+      </div>
+
+      <div style={{display:"flex", justifyContent:"center", gap:6, marginTop:12}}>
+        {SOMATIC_PRACTICES.map((p,i)=>(
+          <button key={p.id} onClick={()=>goTo(i)} style={{
+            width: i===active?20:8, height:8, borderRadius:4, border:"none", cursor:"pointer",
+            background: i===active ? p.color : "#334155", transition:"all 0.25s ease"
+          }}/>
+        ))}
+      </div>
+      <p style={{textAlign:"center", fontSize: fullscreen?11:10, color:"#475569", marginTop:8}}>
+        Swipe or tap a dot to explore the next practice →
       </p>
     </div>
   );
@@ -2541,6 +2743,22 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                       </div>
                     )}
 
+                    {/* Somatic practice feed — Instagram-style swipeable cards */}
+                    {selected === "somatic" && (
+                      <div style={{marginBottom:14}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                          <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:0}}>Key practices</p>
+                          <button onClick={()=>setOverviewFullscreen(true)} style={{
+                            display:"flex",alignItems:"center",gap:4,background:"none",border:"1px solid #1a2540",
+                            borderRadius:7,padding:"4px 9px",color:"#94a3b8",fontSize:11,cursor:"pointer",fontFamily:"inherit"
+                          }}>
+                            ⤢ Fullscreen
+                          </button>
+                        </div>
+                        <SomaticFeed fullscreen={false}/>
+                      </div>
+                    )}
+
                     {(selectedNode.links||[]).length > 0 && (
                       <div style={{marginBottom:14}}>
                         <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",marginBottom:8}}>Related</p>
@@ -2636,7 +2854,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             </span>
           </div>
           <div style={{flex:1, padding:"24px 16px 60px"}}>
-            <IFSFeed fullscreen={true}/>
+            {selected === "ifs" && <IFSFeed fullscreen={true}/>}
+            {selected === "somatic" && <SomaticFeed fullscreen={true}/>}
           </div>
         </div>
       )}
