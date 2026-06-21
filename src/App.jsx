@@ -303,10 +303,10 @@ function computeClusterSizes(selectedId, nodes, edges, baseRanges) {
 }
 
 const COLORS = {
-  modality:  { fill:"#1D9E75", stroke:"#085041", text:"#fff", chip:"#E1F5EE", chipBorder:"#5DCAA5", chipText:"#085041", typeLabel:"Therapy modality" },
-  concept:   { fill:"#7F77DD", stroke:"#3C3489", text:"#fff", chip:"#EEEDFE", chipBorder:"#AFA9EC", chipText:"#3C3489", typeLabel:"Core concept" },
-  challenge: { fill:"#D85A30", stroke:"#712B13", text:"#fff", chip:"#FAECE7", chipBorder:"#F0997B", chipText:"#712B13", typeLabel:"Life challenge" },
-  skill:     { fill:"#378ADD", stroke:"#0C447C", text:"#fff", chip:"#E6F1FB", chipBorder:"#85B7EB", chipText:"#042C53", typeLabel:"Skill / technique" },
+  modality:  { fill:"#4ADE80", stroke:"#22A35A", text:"#06150C", chip:"#0F2A1A", chipBorder:"#4ADE80", chipText:"#86EFAC", typeLabel:"Therapy modality" },
+  concept:   { fill:"#A78BFA", stroke:"#7C5CE0", text:"#16092E", chip:"#1F1438", chipBorder:"#A78BFA", chipText:"#D4C5FB", typeLabel:"Core concept" },
+  challenge: { fill:"#FB923C", stroke:"#D8651A", text:"#2A0F02", chip:"#2E1A0C", chipBorder:"#FB923C", chipText:"#FDC596", typeLabel:"Life challenge" },
+  skill:     { fill:"#60D4F2", stroke:"#2EA8C9", text:"#031A22", chip:"#0D2530", chipBorder:"#60D4F2", chipText:"#A9E8F7", typeLabel:"Skill / technique" },
 };
 // ── Dynamic node sizing by degree centrality ───────────────────────────────────
 // Pre-computed at module load — counts how many edges touch each node,
@@ -536,6 +536,17 @@ PRACTICES["distress-tol"] = {
     }
   ]
 };
+
+// ── Scattered background star field for the Starry Night theme ────────────────
+// Deterministic (not random) so the field doesn't reshuffle on every re-render.
+// Covers the full oversized canvas rect (1800×1260, offset -450/-315) used for
+// pan/zoom headroom.
+const BACKGROUND_STARS = Array.from({ length: 140 }, (_, i) => ({
+  x: -450 + ((i * 137.3) % 1800),
+  y: -315 + ((i * 91.7) % 1260),
+  r: 0.5 + (i % 5) * 0.3,
+  delay: (i % 9) * 0.35,
+}));
 
 const NODES = [
   {id:"cbt",    label:"CBT",           full:"Cognitive Behavioral Therapy",   type:"modality",  x:120,y:155,
@@ -914,7 +925,7 @@ function TipsPanel({ nodeId }) {
       {t.tips.map((tip, i) => (
         <div key={i} style={{
           display:"flex", gap:12, marginBottom:14,
-          background:"#080c18", border:"1px solid #1a2540", borderRadius:8,
+          background:"#060812", border:"1px solid #1C2040", borderRadius:8,
           padding:"12px 14px",
         }}>
           <div style={{
@@ -1478,15 +1489,15 @@ function LinksPanel({ nodeId }) {
         style={{
           display: "block",
           textDecoration: "none",
-          background: "#080c18",
-          border: "1px solid #1a2540",
+          background: "#060812",
+          border: "1px solid #1C2040",
           borderRadius: 8,
           padding: "12px 14px",
           marginBottom: 10,
           transition: "border-color 0.15s ease",
         }}
         onMouseEnter={e => e.currentTarget.style.borderColor = lvl.border}
-        onMouseLeave={e => e.currentTarget.style.borderColor = "#1a2540"}
+        onMouseLeave={e => e.currentTarget.style.borderColor = "#1C2040"}
       >
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
           <span style={{
@@ -1512,7 +1523,7 @@ function LinksPanel({ nodeId }) {
     <div>
       {/* Plain language summary */}
       <div style={{
-        background:"#0d1325", border:"1px solid #1a2540", borderRadius:8,
+        background:"#0A0C1A", border:"1px solid #1C2040", borderRadius:8,
         padding:"12px 14px", marginBottom:20,
       }}>
         <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:"0 0 7px"}}>
@@ -1537,7 +1548,7 @@ function LinksPanel({ nodeId }) {
         {l.research.map((item,i) => <LinkCard key={i} item={item} isResearch={true}/>)}
       </div>
 
-      <div style={{marginTop:6, padding:"10px 12px", background:"#080c18", borderRadius:8, border:"1px solid #1a2540"}}>
+      <div style={{marginTop:6, padding:"10px 12px", background:"#060812", borderRadius:8, border:"1px solid #1C2040"}}>
         <p style={{fontSize:11.5, color:"#475569", margin:0, lineHeight:1.6}}>
           Links open in a new tab. Academic papers marked "open access" are free to read in full; others may show an abstract only.
         </p>
@@ -1559,7 +1570,7 @@ function HistoryPanel({ nodeId }) {
       {/* Header row */}
       <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
         {[{label:"Era", value:h.era},{label:"Origin", value:h.origin}].map(d=>(
-          <div key={d.label} style={{flex:1,minWidth:100,background:"#080c18",border:"1px solid #1a2540",borderRadius:8,padding:"8px 12px"}}>
+          <div key={d.label} style={{flex:1,minWidth:100,background:"#060812",border:"1px solid #1C2040",borderRadius:8,padding:"8px 12px"}}>
             <p style={{fontSize:10,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"#475569",margin:"0 0 3px"}}>{d.label}</p>
             <p style={{fontSize:13,color:"#e2e8f0",margin:0,fontWeight:500}}>{d.value}</p>
           </div>
@@ -1590,7 +1601,7 @@ function HistoryPanel({ nodeId }) {
           <div key={i} style={{display:"flex",gap:12,marginBottom:14,paddingLeft:4}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
               <div style={{width:8,height:8,borderRadius:"50%",background:"#1D9E75",marginTop:4,flexShrink:0}}/>
-              {i < h.milestones.length-1 && <div style={{width:1,flex:1,background:"#1a2540",marginTop:4}}/>}
+              {i < h.milestones.length-1 && <div style={{width:1,flex:1,background:"#1C2040",marginTop:4}}/>}
             </div>
             <div style={{paddingBottom:i < h.milestones.length-1 ? 6 : 0}}>
               <span style={{fontSize:11,fontWeight:700,color:"#1D9E75",display:"block",marginBottom:3}}>{m.year}</span>
@@ -1601,7 +1612,7 @@ function HistoryPanel({ nodeId }) {
       </div>
 
       {/* Context box */}
-      <div style={{background:"#080c18",border:"1px solid #1a2540",borderRadius:8,padding:"12px 14px"}}>
+      <div style={{background:"#060812",border:"1px solid #1C2040",borderRadius:8,padding:"12px 14px"}}>
         <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:"0 0 7px"}}>Historical context</p>
         <p style={{fontSize:13,lineHeight:1.72,color:"#94a3b8",margin:0}}>{h.context}</p>
       </div>
@@ -1619,25 +1630,25 @@ function PracticePanel({ nodeId }) {
   );
   return (
     <div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:14,borderBottom:"1px solid #1a2540"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:14,borderBottom:"1px solid #1C2040"}}>
         <div>
           <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#378ADD",margin:"0 0 2px"}}>Guided practice</p>
           <p style={{fontSize:15,fontWeight:600,color:"#f1f5f9",margin:0,letterSpacing:"-0.01em"}}>{practice.title}</p>
         </div>
-        <span style={{marginLeft:"auto",fontSize:11.5,color:"#475569",background:"#0a0f1e",border:"1px solid #1a2540",borderRadius:20,padding:"3px 10px",whiteSpace:"nowrap",flexShrink:0}}>{practice.duration}</span>
+        <span style={{marginLeft:"auto",fontSize:11.5,color:"#475569",background:"#070914",border:"1px solid #1C2040",borderRadius:20,padding:"3px 10px",whiteSpace:"nowrap",flexShrink:0}}>{practice.duration}</span>
       </div>
 
       <p style={{fontSize:13.5,lineHeight:1.75,color:"#94a3b8",marginBottom:20,whiteSpace:"pre-line"}}>{practice.intro}</p>
 
       {practice.steps.map((step, i) => (
-        <div key={i} style={{marginBottom:20,paddingLeft:14,borderLeft:"2px solid #1a2540",position:"relative"}}>
-          <div style={{position:"absolute",left:-7,top:2,width:12,height:12,borderRadius:"50%",background:"#378ADD",border:"2px solid #0a0f1e",flexShrink:0}}/>
+        <div key={i} style={{marginBottom:20,paddingLeft:14,borderLeft:"2px solid #1C2040",position:"relative"}}>
+          <div style={{position:"absolute",left:-7,top:2,width:12,height:12,borderRadius:"50%",background:"#378ADD",border:"2px solid #070914",flexShrink:0}}/>
           <p style={{fontSize:12,fontWeight:600,color:"#378ADD",margin:"0 0 6px",letterSpacing:".02em"}}>{step.heading}</p>
           <p style={{fontSize:13.5,lineHeight:1.78,color:"#cbd5e1",margin:0,whiteSpace:"pre-line"}}>{step.body}</p>
         </div>
       ))}
 
-      <div style={{marginTop:8,padding:"12px 14px",background:"#080c18",borderRadius:8,border:"1px solid #1a2540"}}>
+      <div style={{marginTop:8,padding:"12px 14px",background:"#060812",borderRadius:8,border:"1px solid #1C2040"}}>
         <p style={{fontSize:12,color:"#475569",margin:0,lineHeight:1.6}}>
           <span style={{color:"#378ADD",fontWeight:600}}>Tip: </span>
           You can return to this practice as many times as you like. Each time will feel different — and that's exactly right.
@@ -1693,7 +1704,7 @@ function computeGatheredPositions(selectedId, nodes, edges) {
 // centers until they clear a minimum gap. Runs several iterations since
 // resolving one pair can reintroduce a small overlap with a third node.
 function resolveCollisions(positions, nodesSubset, pinnedId, opts = {}) {
-  const { iterations = 12, gap = 14, getRadius = (n) => RADIUS_LOOKUP[n.id] ?? 24 } = opts;
+  const { iterations = 12, gap = 26, getRadius = (n) => RADIUS_LOOKUP[n.id] ?? 24 } = opts;
 
   for (let iter = 0; iter < iterations; iter++) {
     let movedAny = false;
@@ -1758,7 +1769,7 @@ const RADIUS_LOOKUP = NODE_SIZES;
 const BASE_POSITIONS = (() => {
   const positions = {};
   NODES.forEach(n => { positions[n.id] = { x: n.x, y: n.y }; });
-  resolveCollisions(positions, NODES, null, { gap: 10 });
+  resolveCollisions(positions, NODES, null, { gap: 24 });
   return positions;
 })();
 function basePos(id) {
@@ -2336,13 +2347,13 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
   const hasTips      = selected && !!TIPS[selected];
 
   const clusterLabels = [
-    {x:50,  y:22, text:"Therapy modalities", color:COLORS.modality.fill},
-    {x:310, y:22, text:"Core concepts",       color:COLORS.concept.fill},
-    {x:635, y:22, text:"Life challenges",     color:COLORS.challenge.fill},
+    {x:50,  y:28, text:"THERAPY MODALITIES", color:COLORS.modality.fill},
+    {x:310, y:28, text:"CORE CONCEPTS",       color:COLORS.concept.fill},
+    {x:635, y:28, text:"LIFE CHALLENGES",     color:COLORS.challenge.fill},
   ];
 
   return (
-    <div style={{fontFamily:"'Inter','Helvetica Neue',sans-serif",background:"#0a0f1e",height:"100vh",width:"100vw",display:"flex",flexDirection:"column",color:"#e2e8f0",overflow:"hidden",position:"fixed",top:0,left:0}}>
+    <div style={{fontFamily:"'Inter','Helvetica Neue',sans-serif",background:"#070914",height:"100vh",width:"100vw",display:"flex",flexDirection:"column",color:"#e2e8f0",overflow:"hidden",position:"fixed",top:0,left:0}}>
       <style>{`
         @keyframes spin { to { transform:rotate(360deg) } }
         svg text { pointer-events:none; user-select:none; }
@@ -2370,7 +2381,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       `}</style>
 
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 20px",background:"#0d1325",borderBottom:"1px solid #1a2540",flexShrink:0,flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 20px",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0,flexWrap:"wrap"}}>
         <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>Mental Map</span>
         {LEGEND.map(l=>(
           <span key={l.type} style={{display:"flex",alignItems:"center",fontSize:11.5,color:"#64748b"}}>
@@ -2393,34 +2404,43 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             onTouchEnd={onTouchEnd}
           >
             <defs>
-              {/* Glow filters per type */}
+              {/* Starry Night background gradient */}
+              <radialGradient id="starryBg" cx="50%" cy="35%" r="75%">
+                <stop offset="0%" stopColor="#0D1024"/>
+                <stop offset="100%" stopColor="#03040A"/>
+              </radialGradient>
+
+              {/* Ambient + selected glow halos — radial gradients only, no blur filters.
+                  feGaussianBlur filters were the main cost during the click-selection
+                  sequence: the browser must re-rasterize every blurred element on every
+                  animation frame. Gradients are pre-computed once and composited cheaply,
+                  even with many of them animating opacity/size simultaneously. */}
               {Object.entries(COLORS).map(([type, c]) => (
-                <filter key={type} id={`glow-${type}`} x="-60%" y="-60%" width="220%" height="220%">
-                  <feGaussianBlur stdDeviation="6" result="blur"/>
-                  <feFlood floodColor={c.fill} floodOpacity="0.7" result="color"/>
-                  <feComposite in="color" in2="blur" operator="in" result="glow"/>
-                  <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
-                </filter>
+                <radialGradient key={`halo-${type}`} id={`star-halo-${type}`} cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor={c.fill} stopOpacity="0.55"/>
+                  <stop offset="60%" stopColor={c.fill} stopOpacity="0.18"/>
+                  <stop offset="100%" stopColor={c.fill} stopOpacity="0"/>
+                </radialGradient>
               ))}
-              {/* Pulse filter */}
-              <filter id="pulse-filter" x="-80%" y="-80%" width="260%" height="260%">
-                <feGaussianBlur stdDeviation="10" result="blur"/>
-                <feFlood floodColor="#ffffff" floodOpacity="0.25" result="color"/>
-                <feComposite in="color" in2="blur" operator="in" result="glow"/>
-                <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
             </defs>
 
-            <rect width="1800" height="1260" x="-450" y="-315" fill="#0a0f1e"
+            <rect width="1800" height="1260" x="-450" y="-315" fill="url(#starryBg)"
               onClick={() => selected && clearAll()}
               style={{cursor: selected ? "pointer" : "default"}}
             />
 
-            {/* Cluster labels */}
+            {/* Scattered background star field — static (no per-star animation) to
+                keep frame cost low. Still fades out as a group on selection. */}
+            <g style={{opacity: selected ? 0 : 1, transition: "opacity 0.6s ease"}}>
+              {BACKGROUND_STARS.map((s,i)=>(
+                <circle key={`bgstar-${i}`} cx={s.x} cy={s.y} r={s.r} fill="#fff" opacity="0.45"/>
+              ))}
+            </g>
             {clusterLabels.map(l=>(
-              <text key={l.text} x={l.x} y={l.y} fontSize="10.5" fontWeight="500"
-                fill={l.color} opacity={selected ? 0 : 0.65}
-                fontFamily="Inter,sans-serif"
+              <text key={l.text} x={l.x} y={l.y} fontSize="16" fontWeight="700"
+                fill={l.color} opacity={selected ? 0 : 0.95}
+                fontFamily="'Space Grotesk',sans-serif"
+                letterSpacing="0.03em"
                 style={{transition:"opacity 0.4s ease"}}>
                 {l.text}
               </text>
@@ -2507,11 +2527,6 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const lh    = fs + 3;
               const startY = -(lines.length-1)*lh/2;
               const hasPr = !!PRACTICES[n.id];
-              const filterAttr = pulse > 0.05
-                ? "url(#pulse-filter)"
-                : glow > 0.3
-                  ? `url(#glow-${n.type})`
-                  : undefined;
 
               return (
                 <g key={n.id}
@@ -2556,29 +2571,42 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                   }}
                   onMouseLeave={() => setTooltip(null)}
                 >
-                  {/* Outer glow ring when selected */}
+                  {/* Always-on soft glow halo — gives every star its characteristic
+                      luminous fuzz, matching the Starry Night reference look */}
+                  <circle r={r*2.4} fill={`url(#star-halo-${n.type})`} opacity={0.55 + glow*0.35}/>
+
+                  {/* Selected node: brighter halo via the same cheap gradient, just larger */}
                   {isSel && (
-                    <circle r={r+10} fill="none"
-                      stroke={c.fill} strokeWidth="1.5" strokeOpacity={0.3 + glow*0.3}/>
+                    <>
+                      <circle r={r+16} fill="none" stroke="#fff" strokeWidth="1" strokeOpacity={0.12 + glow*0.18}/>
+                      <circle r={r*3.1} fill={`url(#star-halo-${n.type})`} opacity={0.5 + glow*0.3}/>
+                    </>
                   )}
+
                   {/* Second ring for high-glow connected nodes */}
                   {!isSel && glow > 0.3 && (
                     <circle r={r+5} fill="none"
                       stroke={c.fill} strokeWidth="1" strokeOpacity={glow*0.25}/>
                   )}
+
                   <circle r={r}
                     fill={c.fill}
                     stroke={c.stroke}
                     strokeWidth={isSel ? 2.5 : 1.5}
-                    filter={filterAttr}
                   />
+
+                  {/* Bright whitish core — present on every node (not just selected) to
+                      match the Starry Night reference: every star has a lit center */}
+                  <circle r={r*0.4} fill="#fff" opacity={isSel ? 0.85 : 0.55}/>
+
                   {hasPr && !isSel && (
                     <circle r={4} cx={r-3} cy={-(r-3)}
-                      fill="#378ADD" stroke="#0a0f1e" strokeWidth="1.5"/>
+                      fill="#378ADD" stroke="#070914" strokeWidth="1.5"/>
                   )}
+                  {/* Label sits BELOW the node, colored to match its type — matches reference */}
                   {lines.map((ln,i)=>(
-                    <text key={i} textAnchor="middle" dy={startY+i*lh+fs*0.38}
-                      fontSize={fs} fontWeight={isSel?700:500} fill={c.text}
+                    <text key={i} textAnchor="middle" y={r + 16 + i*lh}
+                      fontSize={fs} fontWeight={isSel?700:500} fill={c.fill}
                       fontFamily="Inter,sans-serif">
                       {ln}
                     </text>
@@ -2594,7 +2622,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               position:"absolute", left:tooltip.x, top:tooltip.y,
               transform: tooltip.flip ? "translate(-50%, 0)" : "translate(-50%, -100%)",
               pointerEvents:"none", zIndex:50,
-              maxWidth:220, background:"#0d1325",
+              maxWidth:220, background:"#0A0C1A",
               border:`1px solid ${tooltip.color}55`, borderRadius:10,
               padding:"9px 12px", boxShadow:"0 4px 20px rgba(0,0,0,0.5)",
             }}>
@@ -2608,7 +2636,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 transform:"translateX(-50%)", width:10, height:6, overflow:"hidden"
               }}>
                 <div style={{
-                  width:10, height:10, background:"#0d1325",
+                  width:10, height:10, background:"#0A0C1A",
                   border:`1px solid ${tooltip.color}55`,
                   transform: tooltip.flip ? "rotate(45deg)" : "rotate(45deg)",
                   transformOrigin: tooltip.flip ? "bottom right" : "top left",
@@ -2620,7 +2648,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
           {/* Breadcrumb */}
           {breadcrumb.length > 0 && (
-            <div style={{position:"absolute",top:10,left:10,zIndex:10,display:"flex",alignItems:"center",gap:4,background:"rgba(13,19,37,0.9)",backdropFilter:"blur(6px)",border:"1px solid #1a2540",borderRadius:8,padding:"5px 10px",flexWrap:"wrap"}}>
+            <div style={{position:"absolute",top:10,left:10,zIndex:10,display:"flex",alignItems:"center",gap:4,background:"rgba(13,19,37,0.9)",backdropFilter:"blur(6px)",border:"1px solid #1C2040",borderRadius:8,padding:"5px 10px",flexWrap:"wrap"}}>
               <button style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,fontFamily:"inherit"}} onClick={clearAll}>All</button>
               {breadcrumb.map((id,i)=>{
                 const n=nodeById(id);
@@ -2637,7 +2665,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
 
           {!selected && (
-            <div style={{position:"absolute",bottom:12,left:"50%",transform:"translateX(-50%)",background:"rgba(13,19,37,0.85)",backdropFilter:"blur(6px)",border:"1px solid #1a2540",borderRadius:20,padding:"6px 16px",fontSize:12,color:"#64748b",pointerEvents:"none",whiteSpace:"nowrap"}}>
+            <div style={{position:"absolute",bottom:12,left:"50%",transform:"translateX(-50%)",background:"rgba(13,19,37,0.85)",backdropFilter:"blur(6px)",border:"1px solid #1C2040",borderRadius:20,padding:"6px 16px",fontSize:12,color:"#64748b",pointerEvents:"none",whiteSpace:"nowrap"}}>
               Click any node to explore · <span style={{color:"#378ADD"}}>●</span> = has guided practice
             </div>
           )}
@@ -2651,7 +2679,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             style={{
               width: 24, flexShrink: 0, cursor: "col-resize", zIndex: 25,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "#0d1325", borderLeft: "1px solid #1a2540",
+              background: "#0A0C1A", borderLeft: "1px solid #1C2040",
               userSelect: "none",
             }}
           >
@@ -2671,7 +2699,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             style={{
               width: 28, flexShrink: 0, cursor: "pointer", zIndex: 25,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "#0d1325", borderLeft: "1px solid #1a2540",
+              background: "#0A0C1A", borderLeft: "1px solid #1C2040",
               userSelect: "none",
             }}
           >
@@ -2686,7 +2714,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
-            background: "#0d1325",
+            background: "#0A0C1A",
             overflow: "hidden",
             transition: "width .3s ease",
             zIndex: 20,
@@ -2699,12 +2727,12 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               height: "100%",
               minHeight: 0,
             }}>
-              <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0d1325",zIndex:2}}>
+              <div style={{padding:"16px 16px 0",position:"relative",flexShrink:0,background:"#0A0C1A",zIndex:2}}>
                 <button style={{position:"absolute",top:14,right:14,background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:18,lineHeight:1,fontFamily:"inherit"}} onClick={clearAll}>✕</button>
                 <div style={{fontSize:10.5,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:COLORS[selectedNode.type]?.fill,marginBottom:3}}>{COLORS[selectedNode.type]?.typeLabel}</div>
                 <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",lineHeight:1.25,marginBottom:12,paddingRight:24,letterSpacing:"-0.02em"}}>{selectedNode.full||selectedNode.label.replace("\n"," ")}</div>
                 {/* Tabs */}
-                <div style={{display:"flex",borderBottom:"1px solid #1a2540",overflowX:"auto"}}>
+                <div style={{display:"flex",borderBottom:"1px solid #1C2040",overflowX:"auto"}}>
                   {["overview", ...(hasHistory?["history"]:[]), ...(hasLinks?["links"]:[]), ...(hasPractice?["practice"]:[]), ...(hasTips?["tips"]:[]), "insight"].map(t=>(
                     <button key={t} style={{flexShrink:0,padding:"8px 10px",background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#7F77DD":"transparent"}`,color:tab===t?"#e2e8f0":"#64748b",cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,fontFamily:"inherit",whiteSpace:"nowrap"}}
                       onClick={()=>setTab(t)}>
@@ -2742,7 +2770,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 {tab==="overview" && (
                   <div>
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
-                    <div style={{fontSize:13,lineHeight:1.75,color:"#cbd5e1",whiteSpace:"pre-line",background:"#080c18",borderRadius:8,padding:"12px 14px",marginBottom:14,border:"1px solid #1a2540"}}>{selectedNode.content}</div>
+                    <div style={{fontSize:13,lineHeight:1.75,color:"#cbd5e1",whiteSpace:"pre-line",background:"#060812",borderRadius:8,padding:"12px 14px",marginBottom:14,border:"1px solid #1C2040"}}>{selectedNode.content}</div>
 
                     {/* IFS character feed — Instagram-style swipeable cards */}
                     {selected === "ifs" && (
@@ -2750,7 +2778,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
                           <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:0}}>Meet the parts</p>
                           <button onClick={()=>setOverviewFullscreen(true)} style={{
-                            display:"flex",alignItems:"center",gap:4,background:"none",border:"1px solid #1a2540",
+                            display:"flex",alignItems:"center",gap:4,background:"none",border:"1px solid #1C2040",
                             borderRadius:7,padding:"4px 9px",color:"#94a3b8",fontSize:11,cursor:"pointer",fontFamily:"inherit"
                           }}>
                             ⤢ Fullscreen
@@ -2766,7 +2794,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
                           <p style={{fontSize:10.5,fontWeight:600,letterSpacing:".07em",textTransform:"uppercase",color:"#475569",margin:0}}>Key practices</p>
                           <button onClick={()=>setOverviewFullscreen(true)} style={{
-                            display:"flex",alignItems:"center",gap:4,background:"none",border:"1px solid #1a2540",
+                            display:"flex",alignItems:"center",gap:4,background:"none",border:"1px solid #1C2040",
                             borderRadius:7,padding:"4px 9px",color:"#94a3b8",fontSize:11,cursor:"pointer",fontFamily:"inherit"
                           }}>
                             ⤢ Fullscreen
@@ -2802,16 +2830,16 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 {tab==="insight"  && (
                   <div>
                     {loading
-                      ? <div style={{width:28,height:28,border:"2px solid #1a2540",borderTop:"2px solid #7F77DD",borderRadius:"50%",animation:"spin .7s linear infinite",margin:"48px auto"}}/>
+                      ? <div style={{width:28,height:28,border:"2px solid #1C2040",borderTop:"2px solid #7F77DD",borderRadius:"50%",animation:"spin .7s linear infinite",margin:"48px auto"}}/>
                       : insight
                         ? <>
-                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,paddingBottom:12,borderBottom:"1px solid #1a2540"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,paddingBottom:12,borderBottom:"1px solid #1C2040"}}>
                               <span style={{fontSize:12,color:"#7F77DD",fontWeight:600}}>✦</span>
                               <span style={{fontSize:11,color:"#475569",letterSpacing:".06em",textTransform:"uppercase",fontWeight:600}}>Claude · Clinical insight</span>
                             </div>
                             <p style={{fontSize:13.5,lineHeight:1.8,color:"#cbd5e1",whiteSpace:"pre-wrap",margin:0}}>{insight}</p>
                             <button onClick={()=>{insightCache.current[selected]="";generateInsight();}}
-                              style={{marginTop:16,padding:"7px 14px",background:"transparent",border:"1px solid #1a2540",borderRadius:7,color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                              style={{marginTop:16,padding:"7px 14px",background:"transparent",border:"1px solid #1C2040",borderRadius:7,color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
                               Regenerate ↻
                             </button>
                           </>
@@ -2853,17 +2881,17 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       {overviewFullscreen && selectedNode && (
         <div style={{
           position:"fixed", top:0, left:0, right:0, bottom:0, zIndex:100,
-          background:"#0a0f1e", display:"flex", flexDirection:"column",
+          background:"#070914", display:"flex", flexDirection:"column",
           overflowY:"auto", WebkitOverflowScrolling:"touch",
         }}>
           <div style={{
             display:"flex", alignItems:"center", gap:10, padding:"14px 16px",
-            borderBottom:"1px solid #1a2540", flexShrink:0, position:"sticky", top:0,
-            background:"#0a0f1e", zIndex:2,
+            borderBottom:"1px solid #1C2040", flexShrink:0, position:"sticky", top:0,
+            background:"#070914", zIndex:2,
           }}>
             <button onClick={()=>setOverviewFullscreen(false)} style={{
               display:"flex", alignItems:"center", gap:6, background:"none",
-              border:"1px solid #1a2540", borderRadius:8, padding:"6px 12px",
+              border:"1px solid #1C2040", borderRadius:8, padding:"6px 12px",
               color:"#94a3b8", fontSize:13, cursor:"pointer", fontFamily:"inherit"
             }}>‹ Back to map</button>
             <span style={{fontSize:13, fontWeight:600, color:"#f1f5f9"}}>
