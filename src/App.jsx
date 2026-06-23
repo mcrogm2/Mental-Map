@@ -1935,6 +1935,7 @@ export default function MentalMap() {
   const [edgeWaveTick, setEdgeWaveTick] = useState(0); // bumps on every edge-wave frame
   const svgRef = useRef(null);
   const selectedRef = useRef(null);
+  const selectNodeRef = useRef(null); // always points to the latest selectNode — avoids stale closures in touch/mouse handlers that were memoized once with an empty/stable dep array
   const selectionTimersRef = useRef([]); // tracks setTimeout ids from the click sequence so a rapid re-click/deselect can cancel stale ones
 
   // Init animator once
@@ -2155,6 +2156,18 @@ export default function MentalMap() {
     setViewBox(`${vx} ${vy} ${vw} ${vh}`);
   }, []);
 
+  // When the panel collapses/expands, the canvas's actual pixel width changes
+  // (flex layout), which makes the previously-computed cluster viewBox stale —
+  // re-center on the still-selected node so it doesn't look like it deselected.
+  useEffect(() => {
+    if (!selected) return;
+    const id = selected;
+    // Wait for the .3s width transition to finish before recalculating, so we
+    // measure the canvas at its final size rather than mid-animation.
+    const t = setTimeout(() => recenterCluster(id), 320);
+    return () => clearTimeout(t);
+  }, [panelCollapsed, selected, recenterCluster]);
+
   const resetViewBox = useCallback(() => {
     const fresh = getInitialViewBox();
     const parts = fresh.split(" ").map(Number);
@@ -2210,8 +2223,8 @@ export default function MentalMap() {
         // Persist the new position so it survives deselect/reselect/recentering
         BASE_POSITIONS[drag.id] = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
       } else if (drag) {
-        // Treated as a normal click, not a drag
-        selectNode(drag.id);
+        // Treated as a normal click, not a drag — always call the LATEST selectNode via ref
+        selectNodeRef.current && selectNodeRef.current(drag.id);
       }
       dragNodeRef.current = null;
     };
@@ -2250,7 +2263,9 @@ export default function MentalMap() {
       if (drag && drag.moved) {
         BASE_POSITIONS[drag.id] = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
       } else if (drag) {
-        selectNode(drag.id);
+        // Always call the LATEST selectNode via ref — fixes deselect-by-tap on mobile,
+        // which was calling a stale first-render closure that could silently no-op.
+        selectNodeRef.current && selectNodeRef.current(drag.id);
       }
       dragNodeRef.current = null;
     };
@@ -2326,6 +2341,11 @@ export default function MentalMap() {
 
   }, [recenterCluster]);
 
+  // Keep selectNodeRef pointed at the latest selectNode — touch/mouse handlers
+  // below are memoized once (stable empty deps) and call through this ref so
+  // they never invoke a stale closure.
+  useEffect(() => { selectNodeRef.current = selectNode; }, [selectNode]);
+
   const clearAll = useCallback(() => {
     // Cancel any pending stages from the selection sequence — see note in selectNode
     selectionTimersRef.current.forEach(t => clearTimeout(t));
@@ -2395,9 +2415,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
   const hasTips      = selected && !!TIPS[selected];
 
   const clusterLabels = [
-    {x:50,  y:28, text:"THERAPY MODALITIES", color:COLORS.modality.fill},
-    {x:310, y:28, text:"CORE CONCEPTS",       color:COLORS.concept.fill},
-    {x:635, y:28, text:"LIFE CHALLENGES",     color:COLORS.challenge.fill},
+    {x:50,  y:24, lines:["THERAPY","MODALITIES"], color:COLORS.modality.fill},
+    {x:310, y:24, lines:["CORE","CONCEPTS"],       color:COLORS.concept.fill},
+    {x:635, y:24, lines:["LIFE","CHALLENGES"],     color:COLORS.challenge.fill},
   ];
 
   return (
@@ -2501,12 +2521,14 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               ))}
             </g>
             {clusterLabels.map(l=>(
-              <text key={l.text} x={l.x} y={l.y} fontSize="16" fontWeight="700"
+              <text key={l.lines.join("-")} x={l.x} y={l.y} fontSize="13" fontWeight="700"
                 fill={l.color} opacity={selected ? 0 : 0.95}
                 fontFamily="'Space Grotesk',sans-serif"
                 letterSpacing="0.03em"
                 style={{transition:"opacity 0.4s ease"}}>
-                {l.text}
+                {l.lines.map((line, i) => (
+                  <tspan key={i} x={l.x} dy={i === 0 ? 0 : 15}>{line}</tspan>
+                ))}
               </text>
             ))}
 
