@@ -2064,6 +2064,21 @@ export default function MentalMap() {
     setViewBox(`${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
   }, []);
 
+  // Convert a screen-pixel delta into SVG-coordinate delta, accounting for
+  // the current zoom level (viewBox width/height vs actual rendered size).
+  // Declared up here (rather than down by the node-drag code that originally
+  // needed it) because the pan/pinch touch handlers below also depend on it.
+  const screenDeltaToSvg = useCallback((dxPx, dyPx) => {
+    const el = svgRef.current;
+    if (!el) return { dx: dxPx, dy: dyPx };
+    const rect = el.getBoundingClientRect();
+    const vb = viewBoxRef.current;
+    return {
+      dx: dxPx * (vb[2] / rect.width),
+      dy: dyPx * (vb[3] / rect.height),
+    };
+  }, []);
+
   // Scroll wheel zoom
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -2081,10 +2096,17 @@ export default function MentalMap() {
   }, [applyViewBox]);
 
   // Pinch zoom (mobile)
+  const PINCH_END_COOLDOWN_MS = 800; // window after a pinch ends during which a node tap is ignored
   const pinchJustEndedRef = useRef(false);
+  // Single-finger pan — only active when the touch starts on empty canvas
+  // (node/divider touch handlers call stopPropagation, so this only ever
+  // sees touches that begin on the background).
+  const PAN_DRAG_THRESHOLD = 6; // px before a touch/click counts as a pan instead of a tap
+  const panTouchRef = useRef(null); // { startClientX, startClientY, startVb, moved }
   const onTouchStart = useCallback((e) => {
     if (e.touches.length === 2) {
       isPinching.current = true;
+      panTouchRef.current = null; // a second finger landed — hand off to pinch, cancel any pan
       const t = e.touches;
       lastPinchDist.current = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
       lastPinchMid.current = { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 };
@@ -2094,36 +2116,64 @@ export default function MentalMap() {
       // cooldown so that finger's eventual lift-off isn't read as a tap-to-select.
       isPinching.current = false;
       pinchJustEndedRef.current = true;
-      setTimeout(() => { pinchJustEndedRef.current = false; }, 400);
+      setTimeout(() => { pinchJustEndedRef.current = false; }, PINCH_END_COOLDOWN_MS);
+    } else if (e.touches.length === 1) {
+      // Potential single-finger pan — recorded here but only "armed" once the
+      // finger moves past the threshold, so a plain tap-to-deselect still works.
+      const t = e.touches[0];
+      panTouchRef.current = {
+        startClientX: t.clientX, startClientY: t.clientY,
+        startVb: [...viewBoxRef.current], moved: false,
+      };
     }
   }, []);
 
   const onTouchMove = useCallback((e) => {
-    if (!isPinching.current || e.touches.length !== 2) return;
-    e.preventDefault();
-    const t = e.touches;
-    const dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
-    const mid  = { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 };
-    const factor = lastPinchDist.current / dist;
-    const vb = [...viewBoxRef.current];
-    const svg = svgRef.current;
-    const rect = svg.getBoundingClientRect();
-    const mx = vb[0] + (mid.x - rect.left) / rect.width  * vb[2];
-    const my = vb[1] + (mid.y - rect.top)  / rect.height * vb[3];
-    vb[2] *= factor; vb[3] *= factor;
-    vb[0] = mx - (mid.x - rect.left) / rect.width  * vb[2];
-    vb[1] = my - (mid.y - rect.top)  / rect.height * vb[3];
-    applyViewBox(vb);
-    lastPinchDist.current = dist;
-    lastPinchMid.current  = mid;
-  }, [applyViewBox]);
+    if (isPinching.current && e.touches.length === 2) {
+      e.preventDefault();
+      const t = e.touches;
+      const dist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+      const mid  = { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 };
+      const factor = lastPinchDist.current / dist;
+      const vb = [...viewBoxRef.current];
+      const svg = svgRef.current;
+      const rect = svg.getBoundingClientRect();
+      const mx = vb[0] + (mid.x - rect.left) / rect.width  * vb[2];
+      const my = vb[1] + (mid.y - rect.top)  / rect.height * vb[3];
+      vb[2] *= factor; vb[3] *= factor;
+      vb[0] = mx - (mid.x - rect.left) / rect.width  * vb[2];
+      vb[1] = my - (mid.y - rect.top)  / rect.height * vb[3];
+      applyViewBox(vb);
+      lastPinchDist.current = dist;
+      lastPinchMid.current  = mid;
+      return;
+    }
+    const pan = panTouchRef.current;
+    if (pan && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dxPx = t.clientX - pan.startClientX;
+      const dyPx = t.clientY - pan.startClientY;
+      if (!pan.moved && Math.hypot(dxPx, dyPx) > PAN_DRAG_THRESHOLD) pan.moved = true;
+      if (!pan.moved) return;
+      e.preventDefault();
+      const { dx, dy } = screenDeltaToSvg(dxPx, dyPx);
+      const vb = [pan.startVb[0] - dx, pan.startVb[1] - dy, pan.startVb[2], pan.startVb[3]];
+      applyViewBox(vb);
+    }
+  }, [applyViewBox, screenDeltaToSvg]);
 
-  const onTouchEnd = useCallback(() => {
+  const canvasJustPannedTouchRef = useRef(false); // stays true through the synthetic click that follows a touch-pan
+  const onTouchEnd = useCallback((e) => {
     if (isPinching.current) {
       pinchJustEndedRef.current = true;
-      setTimeout(() => { pinchJustEndedRef.current = false; }, 400);
+      setTimeout(() => { pinchJustEndedRef.current = false; }, PINCH_END_COOLDOWN_MS);
     }
     isPinching.current = false;
+    if (panTouchRef.current?.moved) {
+      canvasJustPannedTouchRef.current = true;
+      setTimeout(() => { canvasJustPannedTouchRef.current = false; }, 350);
+    }
+    if (e.touches.length === 0) panTouchRef.current = null;
   }, []);
 
   // Attach wheel listener as non-passive so we can preventDefault
@@ -2199,18 +2249,39 @@ export default function MentalMap() {
   const dragNodeRef = useRef(null); // { id, startClientX, startClientY, startX, startY, moved }
   const DRAG_THRESHOLD = 5; // px on screen before a press counts as a drag
 
-  // Convert a screen-pixel delta into SVG-coordinate delta, accounting for
-  // the current zoom level (viewBox width/height vs actual rendered size).
-  const screenDeltaToSvg = useCallback((dxPx, dyPx) => {
-    const el = svgRef.current;
-    if (!el) return { dx: dxPx, dy: dyPx };
-    const rect = el.getBoundingClientRect();
-    const vb = viewBoxRef.current;
-    return {
-      dx: dxPx * (vb[2] / rect.width),
-      dy: dyPx * (vb[3] / rect.height),
+  // Click-and-drag panning on empty canvas (desktop). A movement threshold
+  // keeps a plain click still working for deselect — same pattern as node drag.
+  const canvasPanRef = useRef(null); // { startClientX, startClientY, startVb, moved }
+  const canvasJustPannedRef = useRef(false); // stays true through the click that follows a drag
+  const onCanvasMouseDown = useCallback((e) => {
+    canvasPanRef.current = {
+      startClientX: e.clientX, startClientY: e.clientY,
+      startVb: [...viewBoxRef.current], moved: false,
     };
-  }, []);
+    const onMove = (ev) => {
+      const pan = canvasPanRef.current;
+      if (!pan) return;
+      const dxPx = ev.clientX - pan.startClientX;
+      const dyPx = ev.clientY - pan.startClientY;
+      if (!pan.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) pan.moved = true;
+      if (!pan.moved) return;
+      const { dx, dy } = screenDeltaToSvg(dxPx, dyPx);
+      applyViewBox([pan.startVb[0] - dx, pan.startVb[1] - dy, pan.startVb[2], pan.startVb[3]]);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      // If this was a drag, swallow the click that the browser fires right
+      // after mouseup so it doesn't get read as a deselect tap.
+      if (canvasPanRef.current?.moved) {
+        canvasJustPannedRef.current = true;
+        setTimeout(() => { canvasJustPannedRef.current = false; }, 0);
+      }
+      canvasPanRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [screenDeltaToSvg, applyViewBox]);
 
   const onNodeMouseDown = useCallback((e, id) => {
     e.stopPropagation();
@@ -2470,14 +2541,18 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       `}</style>
 
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 20px",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0,flexWrap:"wrap"}}>
-        <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>Mental Map</span>
-        {LEGEND.map(l=>(
-          <span key={l.type} style={{display:"flex",alignItems:"center",fontSize:11.5,color:"#64748b"}}>
-            <span style={{width:9,height:9,borderRadius:"50%",background:COLORS[l.type].fill,display:"inline-block",marginRight:5}}/>
-            {l.label}
-          </span>
-        ))}
+      <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px"}}>
+          <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>Mental Map</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:18,padding:"2px 20px 12px",flexWrap:"wrap"}}>
+          {LEGEND.map(l=>(
+            <span key={l.type} style={{display:"flex",alignItems:"center",fontSize:13.5,fontWeight:600,color:"#cbd5e1"}}>
+              <span style={{width:13,height:13,borderRadius:"50%",background:COLORS[l.type].fill,display:"inline-block",marginRight:7,boxShadow:`0 0 8px ${COLORS[l.type].fill}99`}}/>
+              {l.label}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Body */}
@@ -2514,8 +2589,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             </defs>
 
             <rect width="1800" height="1260" x="-450" y="-315" fill="url(#starryBg)"
-              onClick={() => selected && clearAll()}
-              style={{cursor: selected ? "pointer" : "default"}}
+              onMouseDown={onCanvasMouseDown}
+              onClick={() => { if (!canvasJustPannedRef.current && !canvasJustPannedTouchRef.current) selected && clearAll(); }}
+              style={{cursor: selected ? "pointer" : "grab"}}
             />
 
             {/* Scattered background star field — twinkles via CSS animation (cheap,
@@ -2529,7 +2605,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               @keyframes starTwinkleC { 0%,100% { opacity:0.25; } 50% { opacity:1; } }
               .bg-star { animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
             `}</style>
-            <g style={{opacity: selected ? 0 : 1, transition: "opacity 0.6s ease"}}>
+            <g style={{opacity: selected ? 0 : 1, transition: "opacity 0.6s ease", pointerEvents: "none"}}>
               {BACKGROUND_STARS.map((s,i)=>(
                 <circle key={`bgstar-${i}`} cx={s.x} cy={s.y} r={s.r} fill="#fff"
                   className="bg-star"
