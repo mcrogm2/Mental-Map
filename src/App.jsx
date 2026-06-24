@@ -1958,6 +1958,7 @@ export default function MentalMap() {
 
   const onDividerMouseDown = useCallback((e) => {
     e.preventDefault();
+    e.stopPropagation(); // never let this gesture reach a node or the background deselect handler
     preDragWidthRef.current = panelWidth;
     dragRef.current = { startX: e.clientX, startW: panelWidth, moved: false };
     const onMove = (ev) => {
@@ -1973,7 +1974,9 @@ export default function MentalMap() {
         setPanelWidth(Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, raw)));
       }
     };
-    const onUp = () => {
+    const onUp = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       // If barely moved = tap → toggle collapse
       if (!dragRef.current.moved) {
         setPanelCollapsed(prev => !prev);
@@ -1986,7 +1989,12 @@ export default function MentalMap() {
   }, [panelWidth]);
 
   const onDividerTouchStart = useCallback((e) => {
-    e.preventDefault(); // suppress synthetic mousedown/click after touch — same double-toggle issue as nodes
+    // preventDefault on BOTH touchstart and touchend (below) — suppresses the
+    // browser's deferred synthetic click entirely, so there's no stray event
+    // left to land on a node or the canvas after the panel's width-driven
+    // layout shift moves everything under the original touch point.
+    e.preventDefault();
+    e.stopPropagation(); // never let this gesture reach a node or the background deselect handler
     preDragWidthRef.current = panelWidth;
     dragRef.current = { startX: e.touches[0].clientX, startW: panelWidth, moved: false };
     const onMove = (ev) => {
@@ -2003,7 +2011,9 @@ export default function MentalMap() {
         setPanelWidth(Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, raw)));
       }
     };
-    const onEnd = () => {
+    const onEnd = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       // If barely moved = tap → toggle collapse
       if (!dragRef.current.moved) {
         setPanelCollapsed(prev => !prev);
@@ -2012,7 +2022,7 @@ export default function MentalMap() {
       window.removeEventListener("touchend", onEnd);
     };
     window.addEventListener("touchmove", onMove, { passive: false });
-    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchend", onEnd, { passive: false });
   }, [panelWidth]);
   const [viewBox, setViewBox] = useState(INITIAL_VIEWBOX);
   const viewBoxRef = useRef(INITIAL_VIEWBOX.split(" ").map(Number));
@@ -2252,7 +2262,9 @@ export default function MentalMap() {
       animator.current[drag.id] = { ...animator.current[drag.id], x: newX, y: newY };
       animator.notify();
     };
-    const onEnd = () => {
+    const onEnd = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       const drag = dragNodeRef.current;
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
@@ -2266,7 +2278,7 @@ export default function MentalMap() {
       dragNodeRef.current = null;
     };
     window.addEventListener("touchmove", onMove, { passive: false });
-    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchend", onEnd, { passive: false });
   }, [screenDeltaToSvg]);
 
   // ── Selection with staged animation ───────────────────────────────────────
