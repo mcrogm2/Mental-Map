@@ -537,17 +537,6 @@ PRACTICES["distress-tol"] = {
   ]
 };
 
-// ── Scattered background star field for the Starry Night theme ────────────────
-// Deterministic (not random) so the field doesn't reshuffle on every re-render.
-// Covers the full oversized canvas rect (1800×1260, offset -450/-315) used for
-// pan/zoom headroom.
-const BACKGROUND_STARS = Array.from({ length: 140 }, (_, i) => ({
-  x: -450 + ((i * 137.3) % 1800),
-  y: -315 + ((i * 91.7) % 1260),
-  r: 0.5 + (i % 5) * 0.3,
-  delay: (i % 9) * 0.35,
-}));
-
 const NODES = [
   {id:"cbt",    label:"CBT",           full:"Cognitive Behavioral Therapy",   type:"modality",  x:120,y:155,
    summary:"A structured, goal-oriented therapy focusing on the link between thoughts, feelings, and behaviors.",
@@ -664,6 +653,37 @@ const NODES = [
    content:"Builds interoceptive awareness — often disrupted by trauma and chronic stress.\n\nUsed in MBSR, somatic therapy, and sleep protocols. Can be done in 5 minutes or 45.",
    links:[]},
 ];
+
+// ── Canvas bounds, derived from actual node positions ──────────────────────
+// Padding is generous on every side so there's room to pan beyond the
+// outermost nodes, plus headroom for future nodes added further out without
+// needing to touch this padding amount. Recompute this any time NODES grows —
+// it's a pure function of the data, not a hand-tuned constant.
+const CANVAS_PAD = 600;
+function computeCanvasBounds(nodes) {
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs) - CANVAS_PAD, maxX = Math.max(...xs) + CANVAS_PAD;
+  const minY = Math.min(...ys) - CANVAS_PAD, maxY = Math.max(...ys) + CANVAS_PAD;
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+const CANVAS_BOUNDS = computeCanvasBounds(NODES);
+
+// ── Scattered background star field for the Starry Night theme ────────────────
+// Deterministic (not random) so the field doesn't reshuffle on every re-render.
+// Density (stars per unit area) is held constant rather than star *count*, so
+// the field automatically gets denser-looking coverage as CANVAS_BOUNDS grows
+// with more/wider-spread nodes, instead of the same 140 stars stretching thin
+// over a much bigger area.
+const STAR_DENSITY_PER_1000PX2 = 0.0617; // = 140 stars / (1800×1260px / 1000) — matches the original look exactly
+const BACKGROUND_STAR_COUNT = Math.round(
+  (CANVAS_BOUNDS.width * CANVAS_BOUNDS.height / 1000) * STAR_DENSITY_PER_1000PX2
+);
+const BACKGROUND_STARS = Array.from({ length: BACKGROUND_STAR_COUNT }, (_, i) => ({
+  x: CANVAS_BOUNDS.x + ((i * 137.3) % CANVAS_BOUNDS.width),
+  y: CANVAS_BOUNDS.y + ((i * 91.7) % CANVAS_BOUNDS.height),
+  r: 0.5 + (i % 5) * 0.3,
+  delay: (i % 9) * 0.35,
+}));
 
 const EDGES = [
   ["cbt","thought-records"],["cbt","beh-activation"],["cbt","rumination"],["cbt","anxiety"],["cbt","low-mood"],
@@ -2588,7 +2608,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               ))}
             </defs>
 
-            <rect width="1800" height="1260" x="-450" y="-315" fill="url(#starryBg)"
+            <rect width={CANVAS_BOUNDS.width} height={CANVAS_BOUNDS.height} x={CANVAS_BOUNDS.x} y={CANVAS_BOUNDS.y} fill="url(#starryBg)"
               onMouseDown={onCanvasMouseDown}
               onClick={() => { if (!canvasJustPannedRef.current && !canvasJustPannedTouchRef.current) selected && clearAll(); }}
               style={{cursor: selected ? "pointer" : "grab"}}
