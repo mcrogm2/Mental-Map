@@ -2116,7 +2116,7 @@ export default function MentalMap() {
   }, [applyViewBox]);
 
   // Pinch zoom (mobile)
-  const PINCH_END_COOLDOWN_MS = 800; // window after a pinch ends during which a node tap is ignored
+  const PINCH_END_COOLDOWN_MS = 500; // window after a pinch ends during which a node tap is ignored
   const pinchJustEndedRef = useRef(false);
   // Single-finger pan — only active when the touch starts on empty canvas
   // (node/divider touch handlers call stopPropagation, so this only ever
@@ -2533,7 +2533,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
   ];
 
   return (
-    <div style={{fontFamily:"'Inter','Helvetica Neue',sans-serif",background:"#070914",height:"100vh",width:"100vw",display:"flex",flexDirection:"column",color:"#e2e8f0",overflow:"hidden",position:"fixed",top:0,left:0}}>
+    <div style={{fontFamily:"'Inter','Helvetica Neue',sans-serif",background:"#070914",height:"100vh",maxHeight:"100dvh",width:"100vw",display:"flex",flexDirection:"column",color:"#e2e8f0",overflow:"hidden",position:"fixed",inset:0}}>
+      <style>{`
+        html, body { margin:0; padding:0; overflow:hidden; height:100%; }
+      `}</style>
       <style>{`
         @keyframes spin { to { transform:rotate(360deg) } }
         svg text { pointer-events:none; user-select:none; }
@@ -2582,7 +2585,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         <div style={{flex:1,position:"relative",overflow:"hidden",minWidth:0}}>
           <svg ref={svgRef}
             viewBox={viewBox}
-            style={{width:"100%",height:"100%",display:"block"}}
+            style={{width:"100%",height:"100%",display:"block",touchAction:"none"}}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
