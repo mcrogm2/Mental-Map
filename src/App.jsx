@@ -2081,14 +2081,20 @@ export default function MentalMap() {
   }, [applyViewBox]);
 
   // Pinch zoom (mobile)
+  const pinchJustEndedRef = useRef(false);
   const onTouchStart = useCallback((e) => {
     if (e.touches.length === 2) {
       isPinching.current = true;
       const t = e.touches;
       lastPinchDist.current = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
       lastPinchMid.current = { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 };
-    } else {
+    } else if (isPinching.current) {
+      // A pinch (2 fingers) is collapsing to fewer fingers — one finger just
+      // lifted off, but the other may still be resting on a node. Mark a brief
+      // cooldown so that finger's eventual lift-off isn't read as a tap-to-select.
       isPinching.current = false;
+      pinchJustEndedRef.current = true;
+      setTimeout(() => { pinchJustEndedRef.current = false; }, 400);
     }
   }, []);
 
@@ -2112,7 +2118,13 @@ export default function MentalMap() {
     lastPinchMid.current  = mid;
   }, [applyViewBox]);
 
-  const onTouchEnd = useCallback(() => { isPinching.current = false; }, []);
+  const onTouchEnd = useCallback(() => {
+    if (isPinching.current) {
+      pinchJustEndedRef.current = true;
+      setTimeout(() => { pinchJustEndedRef.current = false; }, 400);
+    }
+    isPinching.current = false;
+  }, []);
 
   // Attach wheel listener as non-passive so we can preventDefault
   useEffect(() => {
@@ -2239,6 +2251,7 @@ export default function MentalMap() {
 
   const onNodeTouchStart = useCallback((e, id) => {
     if (e.touches.length !== 1) return; // let pinch-zoom own multi-touch
+    if (isPinching.current || pinchJustEndedRef.current) return; // a pinch is wrapping up — don't treat the lifting finger as a tap on whatever node it happens to rest over
     e.stopPropagation();
     e.preventDefault(); // suppress the synthetic mousedown/click mobile browsers fire after touch — without this, every tap double-toggles selection (once from touchend, once from the synthetic mouseup)
     const touch = e.touches[0];
@@ -2528,17 +2541,11 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 />
               ))}
             </g>
-            {clusterLabels.map(l=>(
-              <text key={l.lines.join("-")} x={l.x} y={l.y} fontSize="13" fontWeight="700"
-                fill={l.color} opacity={selected ? 0 : 0.95}
-                fontFamily="'Space Grotesk',sans-serif"
-                letterSpacing="0.03em"
-                style={{transition:"opacity 0.4s ease"}}>
-                {l.lines.map((line, i) => (
-                  <tspan key={i} x={l.x} dy={i === 0 ? 0 : 15}>{line}</tspan>
-                ))}
-              </text>
-            ))}
+            {/* Cluster title labels removed from the canvas — "THERAPY / MODALITIES"
+                in particular was getting clipped at small/mobile viewport widths
+                since it sits at the top-left edge. The header legend already
+                labels every node type with a colored dot, so it's the single
+                source of truth for cluster identity now. */}
 
             {/* Edges — base purple line + traveling "headlight" overlay from selected node */}
             {EDGES.map(([a,b],i)=>{
@@ -2549,7 +2556,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const bx = bAnim?.x ?? basePos(b).x, by = bAnim?.y ?? basePos(b).y;
               const aOp = aAnim?.opacity ?? 1;
               const bOp = bAnim?.opacity ?? 1;
-              const edgeOp = Math.min(aOp, bOp) * (hi ? 0.7 : !connected ? 0.18 : 0.05);
+              const edgeOp = Math.min(aOp, bOp) * (hi ? 0.7 : !connected ? 0.32 : 0.05);
 
               const touchesSelected = selected && (a === selected || b === selected);
               const glowVal = touchesSelected ? edgeWave.get(a, b) : 0;
@@ -2578,7 +2585,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <g key={i}>
                   <line
                     x1={ax} y1={ay} x2={bx} y2={by}
-                    stroke={hi ? PURPLE : "#2a3a5a"}
+                    stroke={hi ? PURPLE : "#445a82"}
                     strokeWidth={hi ? 2 : 1}
                     strokeOpacity={edgeOp}
                   />
