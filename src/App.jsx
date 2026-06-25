@@ -1714,6 +1714,134 @@ function PracticePanel({ nodeId }) {
   );
 }
 
+// ── Suggest / feedback widget ──────────────────────────────────────────────
+// Two visual modes sharing one form + submit flow:
+//   "floating" — small pill button, fixed top-right over the canvas, expands
+//                into a popover form on click.
+//   "inline"   — a small text link/button (used inside the detail panel),
+//                opens the same form in a centered modal overlay instead of
+//                a popover, since panel space is too tight for an inline form.
+// Both submit to POST /api/feedback with { node, feedbackType, feedback }.
+const FEEDBACK_TYPES = ["Suggest a new topic", "Suggest a resource", "Something's broken", "Wording or clarity", "This was helpful!"];
+
+function SuggestForm({ nodeLabel, onClose }) {
+  const [feedbackType, setFeedbackType] = useState(FEEDBACK_TYPES[0]);
+  const [text, setText] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+
+  const submit = async () => {
+    if (!text.trim() || status === "sending") return;
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node: nodeLabel || "General", feedbackType, feedback: text }),
+      });
+      if (!res.ok) throw new Error("request failed");
+      setStatus("sent");
+      setTimeout(() => { onClose(); }, 1400);
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  if (status === "sent") {
+    return (
+      <div style={{padding:"22px 18px",textAlign:"center"}}>
+        <div style={{fontSize:24,marginBottom:6}}>✓</div>
+        <div style={{fontSize:13,color:"#cbd5e1",fontWeight:600}}>Thanks — sent!</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{padding:"14px 16px 16px",display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>Suggest</span>
+        <button onClick={onClose} aria-label="Close"
+          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:16,lineHeight:1,padding:4}}>✕</button>
+      </div>
+
+      <div style={{fontSize:11.5,color:"#64748b"}}>
+        {nodeLabel ? <>About <span style={{color:"#cbd5e1",fontWeight:600}}>{nodeLabel}</span></> : "General feedback"}
+      </div>
+
+      <select value={feedbackType} onChange={e=>setFeedbackType(e.target.value)}
+        style={{background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:13,padding:"8px 10px",fontFamily:"inherit"}}>
+        {FEEDBACK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+
+      <textarea value={text} onChange={e=>setText(e.target.value)}
+        placeholder="What's on your mind?"
+        rows={4} maxLength={2000}
+        style={{background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:13,padding:"8px 10px",fontFamily:"inherit",resize:"vertical"}}
+      />
+
+      {status === "error" && (
+        <div style={{fontSize:11.5,color:"#fb7185"}}>Couldn't send — please try again.</div>
+      )}
+
+      <button onClick={submit} disabled={!text.trim() || status==="sending"}
+        style={{
+          background: text.trim() ? "#7F77DD" : "#2A2D45",
+          color: text.trim() ? "#0A0C1A" : "#64748b",
+          border:"none", borderRadius:8, padding:"9px 0", fontSize:13, fontWeight:700,
+          cursor: text.trim() ? "pointer" : "default",
+          fontFamily:"inherit",
+        }}>
+        {status === "sending" ? "Sending…" : "Send"}
+      </button>
+    </div>
+  );
+}
+
+function SuggestWidget({ mode, nodeLabel }) {
+  const [open, setOpen] = useState(false);
+
+  if (mode === "inline") {
+    return (
+      <>
+        <button onClick={()=>setOpen(true)}
+          style={{background:"none",border:"none",color:"#7F77DD",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",textAlign:"left"}}>
+          💡 Suggest something for this node
+        </button>
+        {open && (
+          <div style={{position:"fixed",inset:0,background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+            onClick={(e)=>{ if(e.target===e.currentTarget) setOpen(false); }}>
+            <div style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:"min(360px, 100%)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+              <SuggestForm nodeLabel={nodeLabel} onClose={()=>setOpen(false)} />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // floating mode
+  return (
+    <div style={{position:"absolute",top:12,right:12,zIndex:30}}>
+      {!open && (
+        <button onClick={()=>setOpen(true)}
+          style={{
+            background:"rgba(13,16,36,0.85)",backdropFilter:"blur(6px)",
+            border:"1px solid #232752",borderRadius:20,color:"#cbd5e1",
+            fontSize:12.5,fontWeight:600,padding:"7px 14px",cursor:"pointer",
+            display:"flex",alignItems:"center",gap:6,fontFamily:"inherit",
+            boxShadow:"0 2px 10px rgba(0,0,0,0.3)",
+          }}>
+          💡 Suggest an Idea
+        </button>
+      )}
+      {open && (
+        <div style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:280,boxShadow:"0 12px 40px rgba(0,0,0,0.45)"}}>
+          <SuggestForm nodeLabel={nodeLabel} onClose={()=>setOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Compute gathered cluster positions ────────────────────────────────────────
 // When a node is selected, pull connected nodes toward the cluster centroid
 // so they're compact and readable on screen. Returns {id: {x,y}} targets.
@@ -2869,6 +2997,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               Click any node to explore · <span style={{color:"#378ADD"}}>●</span> = has guided practice
             </div>
           )}
+
+          <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
         </div>
 
         {/* Drag divider — tap to toggle, drag to resize */}
@@ -2939,6 +3069,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                       {t==="overview"?"Overview":t==="history"?"⏱ History":t==="links"?"🔗 Links":t==="tips"?"💡 Tips":t==="practice"?"▶ Practice":"✦ AI insight"}
                     </button>
                   ))}
+                </div>
+                <div style={{padding:"6px 0 4px"}}>
+                  <SuggestWidget mode="inline" nodeLabel={selectedNode.full || selectedNode.label.replace("\n"," ")} />
                 </div>
               </div>
 
