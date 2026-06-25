@@ -66,6 +66,9 @@ class NodeAnimator {
     if (this.running) return;
     this.running = true;
     const SPEED = 0.055;
+    const OPACITY_SPEED = 0.16; // faster than SPEED — opacity fades (esp. fade-to-zero
+    // when hiding nodes) need to resolve decisively within a few hundred ms, not the
+    // 2-5+ seconds the slower position/radius speed would take to become imperceptible.
     const tick = () => {
       let anyMoving = false;
       Object.keys(this.current).forEach(id => {
@@ -78,7 +81,7 @@ class NodeAnimator {
         keys.forEach(k => {
           const diff = tgt[k] - cur[k];
           if (Math.abs(diff) > 0.001) {
-            cur[k] += diff * SPEED;
+            cur[k] += diff * (k === "opacity" ? OPACITY_SPEED : SPEED);
             anyMoving = true;
           } else {
             cur[k] = tgt[k];
@@ -298,6 +301,45 @@ function computeClusterSizes(selectedId, nodes, edges, baseRanges) {
     // Selected node gets a boost
     const boost = n.id === selectedId ? 1.18 : 1;
     sizes[n.id] = Math.round((rMin + t*(rMax-rMin)) * boost);
+  });
+  return sizes;
+}
+
+// Multi-seed generalization of computeClusterSizes, for the filter feature.
+// `seedIds` is a Set of node ids the person selected in the filter panel —
+// the cluster is the union of those seeds plus everything directly connected
+// to ANY of them (one hop out), same neighborhood logic as the single-select
+// version but starting from multiple anchors instead of one. There's no
+// single "selected" node here, so no pinned/boosted node — every node in the
+// cluster is sized the same way, purely by its in-cluster degree.
+function computeMultiClusterSizes(seedIds, nodes, edges, baseRanges) {
+  const cluster = new Set(seedIds);
+  edges.forEach(([a,b]) => {
+    if (seedIds.has(a)) cluster.add(b);
+    if (seedIds.has(b)) cluster.add(a);
+  });
+  const clusterNodes = nodes.filter(n => cluster.has(n.id));
+  const degree = {};
+  clusterNodes.forEach(n => { degree[n.id] = 0; });
+  edges.forEach(([a,b]) => {
+    if (cluster.has(a) && cluster.has(b)) {
+      if (degree[a] !== undefined) degree[a]++;
+      if (degree[b] !== undefined) degree[b]++;
+    }
+  });
+  const typeStats = {};
+  clusterNodes.forEach(n => {
+    if (!typeStats[n.type]) typeStats[n.type] = { min:Infinity, max:-Infinity };
+    typeStats[n.type].min = Math.min(typeStats[n.type].min, degree[n.id] ?? 0);
+    typeStats[n.type].max = Math.max(typeStats[n.type].max, degree[n.id] ?? 0);
+  });
+  const sizes = {};
+  nodes.forEach(n => {
+    if (!cluster.has(n.id)) { sizes[n.id] = (baseRanges[n.type]?.min ?? 14); return; }
+    const { min:rMin, max:rMax } = baseRanges[n.type] || { min:18, max:30 };
+    const stats = typeStats[n.type] || { min:0, max:0 };
+    const t = stats.max === stats.min ? 0.5 : ((degree[n.id]??0) - stats.min) / (stats.max - stats.min);
+    sizes[n.id] = Math.round(rMin + t*(rMax-rMin));
   });
   return sizes;
 }
@@ -742,6 +784,17 @@ function renderRichText(text) {
 function connectedSet(id){
   const s=new Set([id]);
   EDGES.forEach(([a,b])=>{ if(a===id)s.add(b); if(b===id)s.add(a); });
+  return s;
+}
+
+// Multi-seed generalization of connectedSet, for the filter feature.
+// Union of every seed id plus everything directly connected to ANY seed.
+function multiConnectedSet(seedIds){
+  const s = new Set(seedIds);
+  EDGES.forEach(([a,b])=>{
+    if (seedIds.has(a)) s.add(b);
+    if (seedIds.has(b)) s.add(a);
+  });
   return s;
 }
 
@@ -1840,24 +1893,126 @@ function SuggestWidget({ mode, nodeLabel }) {
     );
   }
 
-  // floating mode
+  // floating mode — sits inline in the header now (next to the title/legend),
+  // not as a screen-anchored overlay. The wrapper is just `relative` so it
+  // flows normally in the header's flexbox; the popover anchors to ITS OWN
+  // button (not the viewport edge), dropping down below it.
   return (
-    <div style={{position:"absolute",top:12,right:12,zIndex:30}}>
-      {!open && (
-        <button onClick={()=>setOpen(true)}
-          style={{
-            background:"rgba(13,16,36,0.85)",backdropFilter:"blur(6px)",
-            border:"1px solid #232752",borderRadius:20,color:"#cbd5e1",
-            fontSize:12.5,fontWeight:600,padding:"7px 14px",cursor:"pointer",
-            display:"flex",alignItems:"center",gap:6,fontFamily:"inherit",
-            boxShadow:"0 2px 10px rgba(0,0,0,0.3)",
-          }}>
-          💡 Suggest an Idea
-        </button>
-      )}
+    <div style={{position:"relative"}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{
+          background:"rgba(13,16,36,0.85)",backdropFilter:"blur(6px)",
+          border:"1px solid #232752",borderRadius:20,color:"#cbd5e1",
+          fontSize:12.5,fontWeight:600,padding:"7px 14px",cursor:"pointer",
+          display:"flex",alignItems:"center",gap:6,fontFamily:"inherit",
+          whiteSpace:"nowrap",
+        }}>
+        💡 Suggest an Idea
+      </button>
       {open && (
-        <div style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:280,boxShadow:"0 12px 40px rgba(0,0,0,0.45)"}}>
+        // Anchored to the viewport corner (fixed), not the button itself —
+        // see the matching comment in FilterWidget for why.
+        <div style={{position:"fixed",top:64,right:12,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:280,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
           <SuggestForm nodeLabel={nodeLabel} onClose={()=>setOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Filter widget ───────────────────────────────────────────────────────────
+// Floating pill (paired with the Suggest widget) that expands into a search +
+// grouped multi-select list. Controlled: the parent owns the selected-ids
+// Set since the canvas needs it too, this component just renders/edits it.
+function FilterPanel({ selectedIds, onToggle, onClear, onClose }) {
+  const [query, setQuery] = useState("");
+
+  const q = query.trim().toLowerCase();
+  const grouped = LEGEND.map(({ type, label }) => ({
+    type, label,
+    items: NODES.filter(n => n.type === type && (!q || n.label.toLowerCase().includes(q) || (n.full||"").toLowerCase().includes(q))),
+  })).filter(g => g.items.length > 0);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",maxHeight:420}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px 10px"}}>
+        <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>Filter the map</span>
+        <button onClick={onClose} aria-label="Close"
+          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:16,lineHeight:1,padding:4}}>✕</button>
+      </div>
+
+      <div style={{padding:"0 16px 10px"}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)}
+          placeholder="Search topics…"
+          style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:13,padding:"8px 10px",fontFamily:"inherit",boxSizing:"border-box"}}
+        />
+      </div>
+
+      <div className="panel-scroll" style={{overflowY:"auto",flex:1,padding:"0 16px"}}>
+        {grouped.length === 0 && (
+          <div style={{fontSize:12.5,color:"#64748b",padding:"12px 0"}}>No topics match "{query}".</div>
+        )}
+        {grouped.map(({ type, label, items }) => (
+          <div key={type} style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:COLORS[type].chipText,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:COLORS[type].fill,display:"inline-block"}}/>
+              {label}
+            </div>
+            {items.map(n => {
+              const checked = selectedIds.has(n.id);
+              return (
+                <label key={n.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 2px",cursor:"pointer",fontSize:13,color:checked?"#e2e8f0":"#94a3b8"}}>
+                  <input type="checkbox" checked={checked} onChange={()=>onToggle(n.id)}
+                    style={{accentColor:COLORS[type].fill,width:14,height:14,cursor:"pointer"}}/>
+                  {n.label.replace("\n"," ")}
+                </label>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px 14px",borderTop:"1px solid #1C2040"}}>
+        <span style={{fontSize:11.5,color:"#64748b"}}>
+          {selectedIds.size === 0 ? "Showing full map" : `${selectedIds.size} selected`}
+        </span>
+        {selectedIds.size > 0 && (
+          <button onClick={onClear}
+            style={{background:"none",border:"none",color:"#7F77DD",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+            Clear all
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FilterWidget({ selectedIds, onToggle, onClear }) {
+  const [open, setOpen] = useState(false);
+  const count = selectedIds.size;
+
+  return (
+    <div style={{position:"relative"}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{
+          background: count > 0 ? "rgba(127,119,221,0.18)" : "rgba(13,16,36,0.85)",
+          backdropFilter:"blur(6px)",
+          border: count > 0 ? "1px solid #7F77DD" : "1px solid #232752",
+          borderRadius:20,color:"#cbd5e1",
+          fontSize:12.5,fontWeight:600,padding:"7px 14px",cursor:"pointer",
+          display:"flex",alignItems:"center",gap:6,fontFamily:"inherit",
+          whiteSpace:"nowrap",
+        }}>
+        ⚲ Filter{count > 0 ? ` (${count})` : ""}
+      </button>
+      {open && (
+        // Anchored to the viewport corner (fixed), not the button itself —
+        // on narrow screens the header wraps and this button isn't always
+        // near the right edge, so anchoring relative to the button risked
+        // pushing the panel off-screen to the left. A fixed top-right anchor
+        // is predictable regardless of how the header wraps.
+        <div style={{position:"fixed",top:64,right:12,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:300,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
+          <FilterPanel selectedIds={selectedIds} onToggle={onToggle} onClear={onClear} onClose={()=>setOpen(false)} />
         </div>
       )}
     </div>
@@ -1900,6 +2055,45 @@ function computeGatheredPositions(selectedId, nodes, edges) {
   // nodes (non-cluster nodes are untouched and already non-overlapping in
   // the base layout). The selected node is pinned and never moved.
   resolveCollisions(positions, clusterNodes, selectedId);
+
+  return positions;
+}
+
+// Multi-seed generalization of computeGatheredPositions, for the filter
+// feature. Same gather-toward-centroid mechanic, but there's no single
+// pinned anchor node — every node in the union cluster (all seeds + their
+// direct connections) is pulled toward the shared centroid by the same
+// amount, since "which node stays put" doesn't make sense when several
+// unrelated topics are selected at once.
+function computeMultiGatheredPositions(seedIds, nodes, edges) {
+  const cluster = new Set(seedIds);
+  edges.forEach(([a,b]) => {
+    if (seedIds.has(a)) cluster.add(b);
+    if (seedIds.has(b)) cluster.add(a);
+  });
+
+  const clusterNodes = nodes.filter(n => cluster.has(n.id));
+  if (!clusterNodes.length) return {};
+  const cx = clusterNodes.reduce((s,n)=>s+basePos(n.id).x,0) / clusterNodes.length;
+  const cy = clusterNodes.reduce((s,n)=>s+basePos(n.id).y,0) / clusterNodes.length;
+
+  const PULL = 0.38;
+  const positions = {};
+  nodes.forEach(n => {
+    const p = basePos(n.id);
+    if (!cluster.has(n.id)) {
+      positions[n.id] = { x: p.x, y: p.y };
+    } else {
+      positions[n.id] = {
+        x: p.x + (cx - p.x) * PULL,
+        y: p.y + (cy - p.y) * PULL,
+      };
+    }
+  });
+
+  // No pinned node this time — pass null so resolveCollisions splits any
+  // correction evenly between every overlapping pair.
+  resolveCollisions(positions, clusterNodes, null);
 
   return positions;
 }
@@ -2012,6 +2206,7 @@ const edgeWave = new EdgeWaveAnimator();
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function MentalMap() {
   const [selected, setSelected]   = useState(null);
+  const [filterIds, setFilterIds] = useState(() => new Set()); // node ids selected in the Filter panel
   const [breadcrumb, setBreadcrumb] = useState([]);
   const [tab, setTab]             = useState("overview");
   const [overviewFullscreen, setOverviewFullscreen] = useState(false);
@@ -2360,13 +2555,13 @@ export default function MentalMap() {
     if (parts.length === 4) viewBoxRef.current = parts;
   }, [viewBox]);
 
-  const recenterCluster = useCallback((id) => {
-    const cluster = new Set([id]);
-    EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
-    const clusterNodes = NODES.filter(n => cluster.has(n.id));
+  // Shared viewBox-fitting math: given a set of node ids, frame the camera to
+  // show all of them with padding. Used by both single-node selection
+  // (recenterCluster) and multi-topic filtering (recenterToCluster).
+  const recenterToCluster = useCallback((clusterIds) => {
+    const clusterNodes = NODES.filter(n => clusterIds.has(n.id));
     if (!clusterNodes.length) return;
 
-    // Use gathered positions if animator has them
     const getPos = (n) => {
       const a = animator.current?.[n.id];
       return { x: a?.x ?? n.x, y: a?.y ?? n.y };
@@ -2384,10 +2579,8 @@ export default function MentalMap() {
     const padX = 70, padY = 70;
     const spanX = Math.max(maxX - minX + padX*2, 200);
     const spanY = Math.max(maxY - minY + padY*2, 200);
-    // Fit span to canvas, then expand to fill aspect ratio
     let vw = spanX, vh = spanY;
     if (vw / vh > aspect) { vh = vw / aspect; } else { vw = vh * aspect; }
-    // Don't zoom in too aggressively
     const maxZoom = 1.8;
     const curVw = viewBoxRef.current[2];
     const minVw = curVw / maxZoom;
@@ -2559,8 +2752,18 @@ export default function MentalMap() {
     // in EdgeWaveAnimator so it can be re-enabled later once refined.
     // edgeWave.select(id, NODES, EDGES);
 
-    const cluster = new Set([id]);
+    // Normally a click's cluster is just that node's own neighborhood. But if
+    // a filter is active, the filter's hidden nodes must stay hidden — so we
+    // intersect the clicked node's neighborhood with the filter's own visible
+    // cluster, rather than always using the whole graph.
+    let cluster = new Set([id]);
     EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
+    if (filterIdsRef.current.size > 0) {
+      const filterCluster = multiConnectedSet(filterIdsRef.current);
+      cluster = new Set([...cluster].filter(nid => filterCluster.has(nid)));
+      cluster.add(id); // the clicked node is always visible, even if filter math somehow excluded it
+    }
+    const clusterArr = [...cluster];
 
     // Stage 1 (0ms): pulse the clicked node
     const pulse = {};
@@ -2580,33 +2783,100 @@ export default function MentalMap() {
       animator.setTargets(fade);
     }, 80));
 
-    // Stage 3 (220ms): rescale to cluster-relative sizes + gather positions
+    // Stage 3 (220ms): rescale to cluster-relative sizes + gather positions.
+    // Uses the multi-seed compute functions with the clicked node as the
+    // only seed, then constrained to `cluster` above — same math as a plain
+    // single-node click when no filter is active (cluster === full neighborhood
+    // in that case), but respects the filter's visible set when one is active.
     selectionTimersRef.current.push(setTimeout(() => {
-      const clusterSizes = computeClusterSizes(id, NODES, EDGES, DEGREE_RANGES);
-      const gatheredPos  = computeGatheredPositions(id, NODES, EDGES);
+      const clusterSizes = filterIdsRef.current.size > 0
+        ? computeMultiClusterSizes(new Set(clusterArr), NODES, EDGES, DEGREE_RANGES)
+        : computeClusterSizes(id, NODES, EDGES, DEGREE_RANGES);
+      const gatheredPos  = filterIdsRef.current.size > 0
+        ? computeMultiGatheredPositions(new Set(clusterArr), NODES, EDGES)
+        : computeGatheredPositions(id, NODES, EDGES);
       const resize = {};
       NODES.forEach(n => {
         resize[n.id] = {
           radius: clusterSizes[n.id],
-          x: gatheredPos[n.id].x,
-          y: gatheredPos[n.id].y,
+          x: gatheredPos[n.id]?.x ?? basePos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? basePos(n.id).y,
         };
       });
       animator.setTargets(resize);
     }, 220));
 
-    // Stage 4 (300ms): recenter viewbox
-    selectionTimersRef.current.push(setTimeout(() => recenterCluster(id), 300));
+    // Stage 4 (300ms): recenter viewbox to the (possibly filter-constrained) cluster
+    selectionTimersRef.current.push(setTimeout(() => recenterToCluster(cluster), 300));
 
     // Stage 5 (600ms): hand glow over to the breathe loop once everything settles
     selectionTimersRef.current.push(setTimeout(() => animator.startBreathe(id), 600));
 
-  }, [recenterCluster]);
+  }, [recenterToCluster]);
 
   // Keep selectNodeRef pointed at the latest selectNode — touch/mouse handlers
   // below are memoized once (stable empty deps) and call through this ref so
   // they never invoke a stale closure.
   useEffect(() => { selectNodeRef.current = selectNode; }, [selectNode]);
+
+  // ── Filter (multi-topic selection) ─────────────────────────────────────────
+  // toggleFilterId, scheduleFilterApply, and clearFilter (the public API used
+  // by the FilterWidget) are defined further below, after clearAll — but the
+  // refs and the core animation function live here, above clearAll, since
+  // clearAll needs to call applyFilterAnimation when deselecting a node
+  // while a filter is active.
+  const filterTimerRef = useRef(null);
+  const filterIdsRef = useRef(new Set());
+
+  const applyFilterAnimation = useCallback((idsSet) => {
+    selectionTimersRef.current.forEach(t => clearTimeout(t));
+    selectionTimersRef.current = [];
+
+    if (idsSet.size === 0) {
+      // Back to the full map — same reset path as clearAll, minus the
+      // selection-specific state (breadcrumb, panel, insight, etc.) since
+      // filtering doesn't touch single-node selection state at all.
+      const reset = {};
+      NODES.forEach(n => {
+        const p = basePos(n.id);
+        reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
+      });
+      animator.setTargets(reset);
+      selectionTimersRef.current.push(setTimeout(() => resetViewBox(), 50));
+      return;
+    }
+
+    const cluster = multiConnectedSet(idsSet);
+
+    // Stage 1 (0ms): fade non-matching, illuminate matching
+    const fade = {};
+    NODES.forEach(n => {
+      fade[n.id] = {
+        opacity: cluster.has(n.id) ? 1 : 0,
+        glow:    idsSet.has(n.id) ? 1 : cluster.has(n.id) ? 0.5 : 0,
+        pulse:   0,
+      };
+    });
+    animator.setTargets(fade);
+
+    // Stage 2 (160ms): rescale + gather
+    selectionTimersRef.current.push(setTimeout(() => {
+      const clusterSizes = computeMultiClusterSizes(idsSet, NODES, EDGES, DEGREE_RANGES);
+      const gatheredPos  = computeMultiGatheredPositions(idsSet, NODES, EDGES);
+      const resize = {};
+      NODES.forEach(n => {
+        resize[n.id] = {
+          radius: clusterSizes[n.id],
+          x: gatheredPos[n.id]?.x ?? basePos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? basePos(n.id).y,
+        };
+      });
+      animator.setTargets(resize);
+    }, 160));
+
+    // Stage 3 (260ms): recenter viewbox to the filtered cluster
+    selectionTimersRef.current.push(setTimeout(() => recenterToCluster(cluster), 260));
+  }, [resetViewBox, recenterToCluster]);
 
   const clearAll = useCallback(() => {
     // Cancel any pending stages from the selection sequence — see note in selectNode
@@ -2623,6 +2893,13 @@ export default function MentalMap() {
     animator.stopBreathe();
     // edgeWave.deselect(); // disabled along with the select() call above
 
+    if (filterIdsRef.current.size > 0) {
+      // A filter is active — deselecting the node should return to the
+      // filtered view, not the full unfiltered map.
+      applyFilterAnimation(filterIdsRef.current);
+      return;
+    }
+
     // Reset all nodes to base state including original positions
     const reset = {};
     NODES.forEach(n => {
@@ -2633,7 +2910,35 @@ export default function MentalMap() {
 
     // Reset viewbox after slight delay
     selectionTimersRef.current.push(setTimeout(() => resetViewBox(), 50));
-  }, [resetViewBox]);
+  }, [resetViewBox, applyFilterAnimation]);
+
+  // ── Filter (multi-topic selection), continued ──────────────────────────────
+  // toggleFilterId/scheduleFilterApply/clearFilter — the public API the
+  // FilterWidget calls. applyFilterAnimation itself lives above, near clearAll.
+  const scheduleFilterApply = useCallback((idsSet) => {
+    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    filterTimerRef.current = setTimeout(() => applyFilterAnimation(idsSet), 200);
+  }, [applyFilterAnimation]);
+
+  const toggleFilterId = useCallback((id) => {
+    // Selecting a topic filter also exits any single-node selection — the
+    // two states would otherwise both try to drive node opacity/position.
+    if (selectedRef.current) clearAll();
+
+    const next = new Set(filterIdsRef.current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    filterIdsRef.current = next;
+    setFilterIds(next);
+    scheduleFilterApply(next);
+  }, [scheduleFilterApply, clearAll]);
+
+  const clearFilter = useCallback(() => {
+    const next = new Set();
+    filterIdsRef.current = next;
+    setFilterIds(next);
+    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    applyFilterAnimation(next);
+  }, [applyFilterAnimation]);
 
   const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
@@ -2671,6 +2976,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
   const selectedNode = nodeById(selected);
   const connected    = selected ? connectedSet(selected) : null;
+  // When a filter is active (and no single node is selected over it), edges
+  // within the filtered cluster get the same "highlighted" treatment that
+  // connected edges get during single-node selection.
+  const filterConnected = (!selected && filterIds.size > 0) ? multiConnectedSet(filterIds) : null;
   const hasPractice  = selected && !!PRACTICES[selected];
   const hasHistory   = selected && !!HISTORY[selected];
   const hasLinks     = selected && !!LINKS[selected];
@@ -2715,8 +3024,12 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px"}}>
+        <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
           <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>Mental Map</span>
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+            <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} />
+            <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
+          </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:18,padding:"2px 20px 12px",flexWrap:"wrap"}}>
           {LEGEND.map(l=>(
@@ -2799,7 +3112,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             {/* Edges — base purple line + traveling "headlight" overlay from selected node */}
             {EDGES.map(([a,b],i)=>{
               const na=nodeById(a), nb=nodeById(b); if(!na||!nb) return null;
-              const hi = connected && connected.has(a) && connected.has(b);
+              const hi = (connected && connected.has(a) && connected.has(b)) || (filterConnected && filterConnected.has(a) && filterConnected.has(b));
               const aAnim = animState?.[a], bAnim = animState?.[b];
               const ax = aAnim?.x ?? basePos(a).x, ay = aAnim?.y ?? basePos(a).y;
               const bx = bAnim?.x ?? basePos(b).x, by = bAnim?.y ?? basePos(b).y;
@@ -3019,8 +3332,6 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               Click any node to explore · <span style={{color:"#378ADD"}}>●</span> = has guided practice
             </div>
           )}
-
-          <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
         </div>
 
         {/* Drag divider — tap to toggle, drag to resize */}
