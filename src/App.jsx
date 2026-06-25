@@ -2204,7 +2204,7 @@ const animator = new NodeAnimator();
 const edgeWave = new EdgeWaveAnimator();
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function MentalMap() {
+export default function WhatsTherapy() {
   const [selected, setSelected]   = useState(null);
   const [filterIds, setFilterIds] = useState(() => new Set()); // node ids selected in the Filter panel
   const [breadcrumb, setBreadcrumb] = useState([]);
@@ -3025,7 +3025,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
-          <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>Mental Map</span>
+          <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>What's Therapy</span>
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
             <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} />
             <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
