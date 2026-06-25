@@ -560,7 +560,7 @@ const NODES = [
 
   {id:"somatic",label:"Somatic",       full:"Somatic Experiencing",          type:"modality",   x:120,y:570,
    summary:"Body-oriented therapy that releases trauma held in the nervous system.",
-   content:"Developed by Peter Levine, SE focuses on body sensation rather than narrative. Clients learn to track and discharge incomplete survival responses.\n\nFour core practices work together:\n\n• Fight, Flight, Freeze — understanding the body's automatic survival responses\n• Tracking Sensation — following the body's felt sense with curiosity\n• Titration — working with difficult material in small, safe doses\n• Pendulation — moving rhythmically between activation and ease\n\nExplore each below.",
+   content:"Somatic Experience focuses on body sensation rather than narrative. Track and discharge incomplete survival responses.\n\nFour core practices work together:\n\n• **Fight, Flight, Freeze**: understanding the body's automatic survival responses\n• **Tracking Sensation**: following the body's felt sense with curiosity\n• **Titration**: working with difficult material in small, safe doses\n• **Pendulation**: moving rhythmically between activation and ease\n\nExplore each below.",
    links:["grounding","mindfulness","trauma","anxiety"]},
 
   {id:"mindfulness",    label:"Mindfulness",      type:"concept", x:410,y:115,
@@ -717,6 +717,28 @@ const LEGEND = [
 ];
 
 function nodeById(id){ return NODES.find(n=>n.id===id); }
+
+// Renders a content string as JSX, turning **text** segments into <strong>
+// spans. Splits on \n first (each line becomes its own block so pre-line
+// wrapping still works), then on the **bold** pattern within each line.
+// Plain content with no ** in it renders exactly as it did before.
+function renderRichText(text) {
+  if (!text) return null;
+  return text.split("\n").map((line, i) => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g);
+    return (
+      <span key={i}>
+        {i > 0 && <br/>}
+        {parts.map((part, j) => {
+          if (part.startsWith("**") && part.endsWith("**")) {
+            return <strong key={j} style={{color:"#e2e8f0",fontWeight:700}}>{part.slice(2,-2)}</strong>;
+          }
+          return part;
+        })}
+      </span>
+    );
+  });
+}
 function connectedSet(id){
   const s=new Set([id]);
   EDGES.forEach(([a,b])=>{ if(a===id)s.add(b); if(b===id)s.add(a); });
@@ -3103,7 +3125,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 {tab==="overview" && (
                   <div>
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
-                    <div style={{fontSize:13,lineHeight:1.75,color:"#cbd5e1",whiteSpace:"pre-line",background:"#060812",borderRadius:8,padding:"12px 14px",marginBottom:14,border:"1px solid #1C2040"}}>{selectedNode.content}</div>
+                    <div style={{fontSize:13,lineHeight:1.75,color:"#cbd5e1",background:"#060812",borderRadius:8,padding:"12px 14px",marginBottom:14,border:"1px solid #1C2040"}}>{renderRichText(selectedNode.content)}</div>
 
                     {/* IFS character feed — Instagram-style swipeable cards */}
                     {selected === "ifs" && (
