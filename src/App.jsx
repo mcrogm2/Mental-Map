@@ -2064,12 +2064,12 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
         </div>
       </div>
 
-      <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center"}}>
+      <div style={{display:"flex",gap:12,justifyContent:"center",width:"100%",maxWidth:440,padding:"0 4px"}}>
         <button onClick={onChooseExplore}
           style={{
             background:"#11142A",border:"1px solid #232752",borderRadius:16,
-            padding:"22px 28px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
-            width:200,textAlign:"left",
+            padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
+            flex:"1 1 0",minWidth:0,maxWidth:220,textAlign:"left",
           }}>
           <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>Explore</div>
           <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
@@ -2080,8 +2080,8 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
         <button onClick={onChooseMyMap}
           style={{
             background:"rgba(127,119,221,0.12)",border:"1px solid #7F77DD",borderRadius:16,
-            padding:"22px 28px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
-            width:200,textAlign:"left",
+            padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
+            flex:"1 1 0",minWidth:0,maxWidth:220,textAlign:"left",
           }}>
           <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>My Map</div>
           <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
