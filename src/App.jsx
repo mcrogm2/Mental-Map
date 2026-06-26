@@ -2209,6 +2209,70 @@ function Questionnaire({ onComplete, onCancel }) {
 // sending, shows a waiting state; the actual sign-in completes when they
 // click the link in their email and return to the app (handled by the
 // onAuthStateChange listener in the main component, not here).
+// ── Long-press popup (Stage 3) ──────────────────────────────────────────────
+// Small tooltip-style popup anchored near the screen point where a long
+// press completed. Clamped to the viewport so it can never render partially
+// off-screen — important on mobile, where a node near any edge is common.
+// Two variants: a sign-in nudge for anonymous visitors, and the real
+// add/remove confirm for signed-in people.
+function LongPressPopup({ x, y, variant, nodeLabel, inMyMap, onConfirm, onSignIn, onClose }) {
+  const POPUP_W = 220;
+  const POPUP_H = variant === "signedOut" ? 110 : 96;
+  const MARGIN = 12;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 400;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 700;
+
+  // Center the popup under the press point, then clamp every edge so it's
+  // always fully visible, regardless of how close to a screen edge the
+  // press happened.
+  let left = x - POPUP_W / 2;
+  let top = y + 16;
+  left = Math.max(MARGIN, Math.min(left, vw - POPUP_W - MARGIN));
+  if (top + POPUP_H > vh - MARGIN) top = y - POPUP_H - 16; // flip above the press point if there's no room below
+  top = Math.max(MARGIN, Math.min(top, vh - POPUP_H - MARGIN));
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:200}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{
+          position:"absolute",left,top,width:POPUP_W,
+          background:"#0D1024",border:"1px solid #232752",borderRadius:12,
+          padding:"14px 16px",boxShadow:"0 12px 32px rgba(0,0,0,0.5)",
+          fontFamily:"inherit",
+        }}>
+        {variant === "signedOut" ? (
+          <>
+            <div style={{fontSize:12.5,color:"#cbd5e1",lineHeight:1.5,marginBottom:10}}>
+              Sign in to start building your map.
+            </div>
+            <button onClick={onSignIn}
+              style={{width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"7px 0",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Sign in
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{fontSize:12.5,color:"#cbd5e1",lineHeight:1.5,marginBottom:10}}>
+              {inMyMap ? <>Remove <span style={{fontWeight:700,color:"#e2e8f0"}}>{nodeLabel}</span> from My Map?</>
+                       : <>Add <span style={{fontWeight:700,color:"#e2e8f0"}}>{nodeLabel}</span> to My Map?</>}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={onClose}
+                style={{flex:1,background:"none",border:"1px solid #232752",color:"#94a3b8",borderRadius:8,padding:"7px 0",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                Cancel
+              </button>
+              <button onClick={onConfirm}
+                style={{flex:1,background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"7px 0",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {inMyMap ? "Remove" : "Add"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SignInScreen({ onCancel }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle"); // idle | sending | sent | error
@@ -2503,6 +2567,39 @@ export default function WhatsTherapy() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [myMapLoaded, setMyMapLoaded] = useState(false); // has the saved_filters row finished loading for this session
+
+  // ── Long-press add/remove popup (Stage 3) ──────────────────────────────────
+  // longPressPopup is null when nothing's showing, or
+  // { nodeId, x, y, variant: "signedOut" | "addRemove" } while a popup is up.
+  // x/y are the screen coordinates the press happened at, used to anchor the
+  // popup near the node — clamped to the viewport in the popup's own
+  // rendering so it can never get cut off near a screen edge.
+  const [longPressPopup, setLongPressPopup] = useState(null);
+
+  const onNodeLongPress = useCallback((nodeId, clientX, clientY) => {
+    setLongPressPopup({
+      nodeId, x: clientX, y: clientY,
+      variant: session ? "addRemove" : "signedOut",
+    });
+  }, [session]);
+
+  const closeLongPressPopup = useCallback(() => setLongPressPopup(null), []);
+
+  const confirmLongPressAdd = useCallback(() => {
+    if (!longPressPopup) return;
+    const { nodeId } = longPressPopup;
+    setMyMapIds(prev => {
+      const next = new Set(prev);
+      next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
+      return next;
+    });
+    setLongPressPopup(null);
+  }, [longPressPopup]);
+
+  const goToSignInFromLongPress = useCallback(() => {
+    setLongPressPopup(null);
+    setAppMode("signin");
+  }, []);
 
   // Check for an existing session on first load (covers: already signed in
   // earlier today in this browser), and subscribe to auth state changes
@@ -2988,19 +3085,31 @@ export default function WhatsTherapy() {
     window.addEventListener("mouseup", onUp);
   }, [screenDeltaToSvg, applyViewBox]);
 
+  const LONG_PRESS_MS = 550;
+
   const onNodeMouseDown = useCallback((e, id) => {
     e.stopPropagation();
     const node = animator.current[id] || basePos(id);
+    const startClientX = e.clientX, startClientY = e.clientY;
     dragNodeRef.current = {
-      id, startClientX: e.clientX, startClientY: e.clientY,
-      startX: node.x, startY: node.y, moved: false,
+      id, startClientX, startClientY,
+      startX: node.x, startY: node.y, moved: false, longPressed: false,
     };
+    const longPressTimer = setTimeout(() => {
+      const drag = dragNodeRef.current;
+      if (!drag || drag.moved) return; // already a drag — not a hold
+      drag.longPressed = true;
+      onNodeLongPress(id, startClientX, startClientY);
+    }, LONG_PRESS_MS);
     const onMove = (ev) => {
       const drag = dragNodeRef.current;
       if (!drag) return;
       const dxPx = ev.clientX - drag.startClientX;
       const dyPx = ev.clientY - drag.startClientY;
-      if (!drag.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) drag.moved = true;
+      if (!drag.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) {
+        drag.moved = true;
+        clearTimeout(longPressTimer); // movement means this is a drag, not a hold
+      }
       if (!drag.moved) return;
       const { dx, dy } = screenDeltaToSvg(dxPx, dyPx);
       const newX = drag.startX + dx, newY = drag.startY + dy;
@@ -3009,21 +3118,24 @@ export default function WhatsTherapy() {
       animator.notify();
     };
     const onUp = () => {
+      clearTimeout(longPressTimer);
       const drag = dragNodeRef.current;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (drag && drag.moved) {
         // Persist the new position so it survives deselect/reselect/recentering
         BASE_POSITIONS[drag.id] = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
-      } else if (drag) {
-        // Treated as a normal click, not a drag — always call the LATEST selectNode via ref
+      } else if (drag && !drag.longPressed) {
+        // Treated as a normal click, not a drag or a hold — always call the LATEST selectNode via ref
         selectNodeRef.current && selectNodeRef.current(drag.id);
       }
+      // If longPressed, the long-press popup is already showing — the
+      // release itself does nothing further (no select/deselect).
       dragNodeRef.current = null;
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [screenDeltaToSvg]);
+  }, [screenDeltaToSvg, onNodeLongPress]);
 
   const onNodeTouchStart = useCallback((e, id) => {
     if (e.touches.length !== 1) return; // let pinch-zoom own multi-touch
@@ -3032,17 +3144,27 @@ export default function WhatsTherapy() {
     e.preventDefault(); // suppress the synthetic mousedown/click mobile browsers fire after touch — without this, every tap double-toggles selection (once from touchend, once from the synthetic mouseup)
     const touch = e.touches[0];
     const node = animator.current[id] || basePos(id);
+    const startClientX = touch.clientX, startClientY = touch.clientY;
     dragNodeRef.current = {
-      id, startClientX: touch.clientX, startClientY: touch.clientY,
-      startX: node.x, startY: node.y, moved: false,
+      id, startClientX, startClientY,
+      startX: node.x, startY: node.y, moved: false, longPressed: false,
     };
+    const longPressTimer = setTimeout(() => {
+      const drag = dragNodeRef.current;
+      if (!drag || drag.moved) return;
+      drag.longPressed = true;
+      onNodeLongPress(id, startClientX, startClientY);
+    }, LONG_PRESS_MS);
     const onMove = (ev) => {
       const drag = dragNodeRef.current;
       if (!drag || ev.touches.length !== 1) return;
       const t = ev.touches[0];
       const dxPx = t.clientX - drag.startClientX;
       const dyPx = t.clientY - drag.startClientY;
-      if (!drag.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) drag.moved = true;
+      if (!drag.moved && Math.hypot(dxPx, dyPx) > DRAG_THRESHOLD) {
+        drag.moved = true;
+        clearTimeout(longPressTimer);
+      }
       if (!drag.moved) return;
       ev.preventDefault();
       const { dx, dy } = screenDeltaToSvg(dxPx, dyPx);
@@ -3054,12 +3176,13 @@ export default function WhatsTherapy() {
     const onEnd = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
+      clearTimeout(longPressTimer);
       const drag = dragNodeRef.current;
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
       if (drag && drag.moved) {
         BASE_POSITIONS[drag.id] = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
-      } else if (drag) {
+      } else if (drag && !drag.longPressed) {
         // Always call the LATEST selectNode via ref — fixes deselect-by-tap on mobile,
         // which was calling a stale first-render closure that could silently no-op.
         selectNodeRef.current && selectNodeRef.current(drag.id);
@@ -3068,7 +3191,7 @@ export default function WhatsTherapy() {
     };
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onEnd, { passive: false });
-  }, [screenDeltaToSvg]);
+  }, [screenDeltaToSvg, onNodeLongPress]);
 
   // ── Selection with staged animation ───────────────────────────────────────
   const selectNode = useCallback((id) => {
@@ -3267,20 +3390,43 @@ export default function WhatsTherapy() {
     // two states would otherwise both try to drive node opacity/position.
     if (selectedRef.current) clearAll();
 
+    if (appMode === "myMap") {
+      // While viewing My Map, the Filter panel edits the REAL saved map —
+      // not a throwaway preview. Writing to myMapIds here is enough: the
+      // existing appMode-sync effect below re-applies it to filterIdsRef
+      // for rendering, and the existing debounced save effect picks up the
+      // myMapIds change and persists it, exactly as if this same node had
+      // been picked in the questionnaire.
+      setMyMapIds(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+      return;
+    }
+
+    // Explore mode: unchanged — a temporary filter that never touches
+    // myMapIds and is discarded the moment Explore is left.
     const next = new Set(filterIdsRef.current);
     if (next.has(id)) next.delete(id); else next.add(id);
     filterIdsRef.current = next;
     setFilterIds(next);
     scheduleFilterApply(next);
-  }, [scheduleFilterApply, clearAll]);
+  }, [scheduleFilterApply, clearAll, appMode]);
 
   const clearFilter = useCallback(() => {
+    if (appMode === "myMap") {
+      // Same reasoning as toggleFilterId above — "Clear all" while viewing
+      // My Map clears the actual saved map, not a throwaway filter.
+      setMyMapIds(new Set());
+      return;
+    }
     const next = new Set();
     filterIdsRef.current = next;
     setFilterIds(next);
     if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
     applyFilterAnimation(next);
-  }, [applyFilterAnimation]);
+  }, [applyFilterAnimation, appMode]);
 
   // My Map reuses the Filter feature's machinery wholesale: entering My Map
   // mode just feeds myMapIds into the same filterIdsRef/applyFilterAnimation
@@ -3787,8 +3933,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
 
           {!selected && (
-            <div style={{position:"absolute",bottom:12,left:"50%",transform:"translateX(-50%)",background:"rgba(13,19,37,0.85)",backdropFilter:"blur(6px)",border:"1px solid #1C2040",borderRadius:20,padding:"6px 16px",fontSize:12,color:"#64748b",pointerEvents:"none",whiteSpace:"nowrap"}}>
-              Click any node to explore · <span style={{color:"#378ADD"}}>●</span> = has guided practice
+            <div style={{position:"absolute",bottom:12,left:"50%",transform:"translateX(-50%)",background:"rgba(13,19,37,0.85)",backdropFilter:"blur(6px)",border:"1px solid #1C2040",borderRadius:20,padding:"6px 16px",fontSize:12,color:"#64748b",pointerEvents:"none",maxWidth:"calc(100vw - 32px)",textAlign:"center",lineHeight:1.5}}>
+              {!session
+                ? <>Click any node to explore · Hold to add to map · <span style={{color:"#7F77DD"}}>Sign in to start building your map!</span></>
+                : <>Click any node to explore · Hold to {appMode==="myMap" ? "add/remove" : "add"} · <span style={{color:"#378ADD"}}>●</span> = has guided practice</>}
             </div>
           )}
         </div>
@@ -4030,6 +4178,19 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         </div>
       )}
         </>
+      )}
+
+      {longPressPopup && (
+        <LongPressPopup
+          x={longPressPopup.x}
+          y={longPressPopup.y}
+          variant={longPressPopup.variant}
+          nodeLabel={nodeById(longPressPopup.nodeId)?.label.replace("\n"," ")}
+          inMyMap={appMode === "myMap" && myMapIds.has(longPressPopup.nodeId)}
+          onConfirm={confirmLongPressAdd}
+          onSignIn={goToSignInFromLongPress}
+          onClose={closeLongPressPopup}
+        />
       )}
     </div>
   );
