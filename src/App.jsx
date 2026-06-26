@@ -1924,6 +1924,65 @@ function SuggestWidget({ mode, nodeLabel }) {
 // Floating pill (paired with the Suggest widget) that expands into a search +
 // grouped multi-select list. Controlled: the parent owns the selected-ids
 // Set since the canvas needs it too, this component just renders/edits it.
+// Generalized search + grouped multi-select list, extracted from the original
+// FilterPanel implementation so the same UI/UX can be reused by the My Map
+// questionnaire (which needs the same pattern but scoped to different node
+// types, plus an optional N/A option the Filter panel never needed).
+function MultiSelectSearch({ types, selectedIds, onToggle, naSelected, onToggleNA, placeholder }) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+
+  const grouped = LEGEND
+    .filter(({ type }) => types.includes(type))
+    .map(({ type, label }) => ({
+      type, label,
+      items: NODES.filter(n => n.type === type && (!q || n.label.toLowerCase().includes(q) || (n.full||"").toLowerCase().includes(q))),
+    }))
+    .filter(g => g.items.length > 0);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column"}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)}
+        placeholder={placeholder || "Search…"}
+        style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:13,padding:"8px 10px",fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}
+      />
+
+      {onToggleNA && (
+        <label style={{display:"flex",alignItems:"center",gap:8,padding:"5px 2px",cursor:"pointer",fontSize:13,color:naSelected?"#e2e8f0":"#94a3b8",marginBottom:8,borderBottom:"1px solid #1C2040",paddingBottom:10}}>
+          <input type="checkbox" checked={!!naSelected} onChange={onToggleNA}
+            style={{accentColor:"#7F77DD",width:14,height:14,cursor:"pointer"}}/>
+          Not applicable / none of these help right now
+        </label>
+      )}
+
+      <div style={{overflowY:"auto",maxHeight:320,WebkitOverflowScrolling:"touch"}}>
+        {grouped.length === 0 && (
+          <div style={{fontSize:12.5,color:"#64748b",padding:"12px 0"}}>No topics match "{query}".</div>
+        )}
+        {grouped.map(({ type, label, items }) => (
+          <div key={type} style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:COLORS[type].chipText,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:COLORS[type].fill,display:"inline-block"}}/>
+              {label}
+            </div>
+            {items.map(n => {
+              const checked = selectedIds.has(n.id);
+              return (
+                <label key={n.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 2px",cursor:"pointer",fontSize:13,color:checked?"#e2e8f0":"#94a3b8"}}>
+                  <input type="checkbox" checked={checked} onChange={()=>onToggle(n.id)}
+                    disabled={!!naSelected}
+                    style={{accentColor:COLORS[type].fill,width:14,height:14,cursor: naSelected ? "default" : "pointer"}}/>
+                  {n.label.replace("\n"," ")}
+                </label>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FilterPanel({ selectedIds, onToggle, onClear, onClose }) {
   const [query, setQuery] = useState("");
 
@@ -1981,6 +2040,150 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose }) {
             style={{background:"none",border:"none",color:"#7F77DD",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
             Clear all
           </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── My Map: landing screen ─────────────────────────────────────────────────
+// Shown on every visit (per product decision — no "remember my choice").
+// Explore goes straight into the existing full-map experience, unchanged.
+// My Map either resumes an existing personalized map or starts the
+// questionnaire that builds one. In this stage (no backend yet), "signed in"
+// is simulated by whether a My Map node set already exists in memory — real
+// auth replaces this check in a later stage without changing this component's
+// props/shape.
+function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
+      <div>
+        <div style={{fontSize:22,fontWeight:600,color:"#f1f5f9",marginBottom:8}}>What's Therapy</div>
+        <div style={{fontSize:14,color:"#94a3b8",maxWidth:360}}>
+          Explore the full map, or build your own personalized map around what matters to you.
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",justifyContent:"center"}}>
+        <button onClick={onChooseExplore}
+          style={{
+            background:"#11142A",border:"1px solid #232752",borderRadius:16,
+            padding:"22px 28px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
+            width:200,textAlign:"left",
+          }}>
+          <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>Explore</div>
+          <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
+            Browse the full map of therapy modalities, concepts, challenges, and skills.
+          </div>
+        </button>
+
+        <button onClick={onChooseMyMap}
+          style={{
+            background:"rgba(127,119,221,0.12)",border:"1px solid #7F77DD",borderRadius:16,
+            padding:"22px 28px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
+            width:200,textAlign:"left",
+          }}>
+          <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>My Map</div>
+          <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
+            {hasMyMap
+              ? "Pick up your personalized map where you left off."
+              : "Answer a couple of quick questions to build a map just for you."}
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── My Map: questionnaire ───────────────────────────────────────────────────
+// Two steps, each a MultiSelectSearch scoped to different node types. Submits
+// the union of both steps' selections as the seed set for the generated map —
+// the SAME seed-set shape the Filter feature already consumes downstream
+// (computeMultiClusterSizes / computeMultiGatheredPositions / multiConnectedSet),
+// so the actual map-building logic needs no changes at all.
+function Questionnaire({ onComplete, onCancel }) {
+  const [step, setStep] = useState(0); // 0 = challenges, 1 = concepts/skills
+  const [challengeIds, setChallengeIds] = useState(() => new Set());
+  const [helpIds, setHelpIds] = useState(() => new Set());
+  const [na, setNa] = useState(false);
+
+  const toggleChallenge = (id) => {
+    setChallengeIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const toggleHelp = (id) => {
+    setHelpIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const toggleNa = () => {
+    setNa(prev => !prev);
+    setHelpIds(new Set()); // N/A and specific picks are mutually exclusive
+  };
+
+  const finish = () => {
+    const seeds = new Set([...challengeIds, ...helpIds]);
+    onComplete(seeds);
+  };
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",padding:"32px 20px",overflowY:"auto"}}>
+      <div style={{width:"100%",maxWidth:480}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <button onClick={onCancel}
+            style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12.5,fontFamily:"inherit",padding:0}}>
+            ← Back
+          </button>
+          <span style={{fontSize:11.5,color:"#64748b"}}>Step {step+1} of 2</span>
+        </div>
+
+        {step === 0 && (
+          <>
+            <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",margin:"10px 0 4px"}}>
+              What emotions or struggles do you experience?
+            </div>
+            <div style={{fontSize:12.5,color:"#94a3b8",marginBottom:16}}>
+              Pick as many as feel relevant — you can change this anytime.
+            </div>
+            <MultiSelectSearch
+              types={["challenge"]}
+              selectedIds={challengeIds}
+              onToggle={toggleChallenge}
+              placeholder="Search life challenges…"
+            />
+            <button onClick={()=>setStep(1)}
+              style={{marginTop:18,width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"10px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Next
+            </button>
+          </>
+        )}
+
+        {step === 1 && (
+          <>
+            <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",margin:"10px 0 4px"}}>
+              What ideas and practices help you?
+            </div>
+            <div style={{fontSize:12.5,color:"#94a3b8",marginBottom:16}}>
+              Therapy concepts and coping skills you already know help — or want to explore.
+            </div>
+            <MultiSelectSearch
+              types={["concept","skill"]}
+              selectedIds={helpIds}
+              onToggle={toggleHelp}
+              naSelected={na}
+              onToggleNA={toggleNa}
+              placeholder="Search concepts and skills…"
+            />
+            <button onClick={finish}
+              style={{marginTop:18,width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"10px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Build my map
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -2207,6 +2410,28 @@ const edgeWave = new EdgeWaveAnimator();
 export default function WhatsTherapy() {
   const [selected, setSelected]   = useState(null);
   const [filterIds, setFilterIds] = useState(() => new Set()); // node ids selected in the Filter panel
+
+  // ── My Map (stage 1: landing screen + questionnaire, no backend yet) ──────
+  // appMode drives which top-level screen renders: the Explore/My Map choice,
+  // the questionnaire, or the map itself (shared by both Explore and My Map —
+  // they differ only in which seed ids drive the filter-style view below).
+  // myMapIds is the node set My Map was built from; in this stage it lives
+  // only in memory and resets on page reload. Stage 2 replaces this with a
+  // real Supabase-backed load/save without changing how the rest of the app
+  // consumes myMapIds.
+  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "questionnaire" | "myMap"
+  const [myMapIds, setMyMapIds] = useState(() => new Set());
+
+  const handleChooseExplore = () => setAppMode("explore");
+  const handleChooseMyMap = () => {
+    setAppMode(myMapIds.size > 0 ? "myMap" : "questionnaire");
+  };
+  const handleQuestionnaireComplete = (seedIds) => {
+    setMyMapIds(seedIds);
+    setAppMode("myMap");
+  };
+  const handleQuestionnaireCancel = () => setAppMode("landing");
+
   const [breadcrumb, setBreadcrumb] = useState([]);
   const [tab, setTab]             = useState("overview");
   const [overviewFullscreen, setOverviewFullscreen] = useState(false);
@@ -2940,6 +3165,27 @@ export default function WhatsTherapy() {
     applyFilterAnimation(next);
   }, [applyFilterAnimation]);
 
+  // My Map reuses the Filter feature's machinery wholesale: entering My Map
+  // mode just feeds myMapIds into the same filterIdsRef/applyFilterAnimation
+  // pipeline the Filter panel already drives. This is intentional — it's the
+  // same "selected nodes + their direct connections" mechanism, just sourced
+  // from the questionnaire instead of checkboxes, per the agreed design.
+  // Leaving Explore (back to the full map) clears it the same way clearFilter
+  // already does for the Filter panel.
+  useEffect(() => {
+    if (appMode === "myMap") {
+      filterIdsRef.current = myMapIds;
+      setFilterIds(myMapIds);
+      applyFilterAnimation(myMapIds);
+    } else if (appMode === "explore") {
+      filterIdsRef.current = new Set();
+      setFilterIds(new Set());
+      applyFilterAnimation(new Set());
+    }
+    // landing/questionnaire modes don't touch the canvas filter state at all —
+    // the canvas isn't even rendered while those modes are active.
+  }, [appMode, myMapIds, applyFilterAnimation]);
+
   const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
     if(insightCache.current[selected]) { setInsight(insightCache.current[selected]); setTab("insight"); return; }
@@ -3022,10 +3268,37 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         }
       `}</style>
 
+      {appMode === "landing" && (
+        <LandingScreen
+          hasMyMap={myMapIds.size > 0}
+          onChooseExplore={handleChooseExplore}
+          onChooseMyMap={handleChooseMyMap}
+        />
+      )}
+
+      {appMode === "questionnaire" && (
+        <Questionnaire
+          onComplete={handleQuestionnaireComplete}
+          onCancel={handleQuestionnaireCancel}
+        />
+      )}
+
+      {(appMode === "explore" || appMode === "myMap") && (
+        <>
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
           <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>What's Therapy</span>
+          <div style={{display:"flex",background:"#11142A",border:"1px solid #232752",borderRadius:20,padding:2}}>
+            <button onClick={handleChooseExplore}
+              style={{background: appMode==="explore" ? "#232752" : "none",border:"none",borderRadius:18,color: appMode==="explore" ? "#e2e8f0" : "#64748b",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
+              Explore
+            </button>
+            <button onClick={handleChooseMyMap}
+              style={{background: appMode==="myMap" ? "#232752" : "none",border:"none",borderRadius:18,color: appMode==="myMap" ? "#e2e8f0" : "#64748b",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
+              My Map
+            </button>
+          </div>
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
             <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} />
             <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
@@ -3569,6 +3842,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             {selected === "somatic" && <SomaticFeed fullscreen={true}/>}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
