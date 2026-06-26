@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { supabase } from "./supabaseClient";
 
 // ── Animation engine ───────────────────────────────────────────────────────────
 // Drives per-node animated values (opacity, radius, glowOpacity) outside React
@@ -1983,7 +1984,7 @@ function MultiSelectSearch({ types, selectedIds, onToggle, naSelected, onToggleN
   );
 }
 
-function FilterPanel({ selectedIds, onToggle, onClear, onClose }) {
+function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSignOut }) {
   const [query, setQuery] = useState("");
 
   const q = query.trim().toLowerCase();
@@ -2042,6 +2043,18 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose }) {
           </button>
         )}
       </div>
+      {isSignedIn ? (
+        <div style={{padding:"0 16px 14px"}}>
+          <button onClick={onSignOut}
+            style={{background:"none",border:"none",color:"#64748b",fontSize:11.5,cursor:"pointer",fontFamily:"inherit",padding:0}}>
+            Sign out
+          </button>
+        </div>
+      ) : (
+        <div style={{padding:"0 16px 14px",fontSize:11.5,color:"#64748b",lineHeight:1.5}}>
+          💡 Sign in to save this across devices — try "My Map" from the home screen.
+        </div>
+      )}
     </div>
   );
 }
@@ -2190,7 +2203,72 @@ function Questionnaire({ onComplete, onCancel }) {
   );
 }
 
-function FilterWidget({ selectedIds, onToggle, onClear }) {
+// ── My Map: sign-in screen ───────────────────────────────────────────────────
+// Shown when someone clicks "My Map" while signed out. Email + magic link
+// only — no password field at all, matching the agreed design. After
+// sending, shows a waiting state; the actual sign-in completes when they
+// click the link in their email and return to the app (handled by the
+// onAuthStateChange listener in the main component, not here).
+function SignInScreen({ onCancel }) {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+
+  const sendLink = async () => {
+    if (!email.trim() || status === "sending") return;
+    setStatus("sending");
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setStatus(error ? "error" : "sent");
+  };
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:24,textAlign:"center"}}>
+      <button onClick={onCancel}
+        style={{position:"absolute",top:20,left:20,background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12.5,fontFamily:"inherit",padding:0}}>
+        ← Back
+      </button>
+
+      {status === "sent" ? (
+        <div style={{maxWidth:360}}>
+          <div style={{fontSize:24,marginBottom:10}}>✓</div>
+          <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",marginBottom:8}}>Check your email</div>
+          <div style={{fontSize:13.5,color:"#94a3b8",lineHeight:1.6}}>
+            We sent a sign-in link to <span style={{color:"#cbd5e1",fontWeight:600}}>{email}</span>. Click it to continue — this tab will pick up automatically.
+          </div>
+        </div>
+      ) : (
+        <div style={{maxWidth:360,width:"100%"}}>
+          <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",marginBottom:8}}>Sign in to My Map</div>
+          <div style={{fontSize:13.5,color:"#94a3b8",marginBottom:20,lineHeight:1.6}}>
+            We'll email you a link — no password needed. This is what lets your map follow you across devices.
+          </div>
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
+            placeholder="you@example.com"
+            onKeyDown={e=>{ if (e.key==="Enter") sendLink(); }}
+            style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:14,padding:"10px 12px",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}
+          />
+          {status === "error" && (
+            <div style={{fontSize:12.5,color:"#fb7185",marginBottom:12}}>Something went wrong — please try again.</div>
+          )}
+          <button onClick={sendLink} disabled={!email.trim() || status==="sending"}
+            style={{
+              width:"100%",
+              background: email.trim() ? "#7F77DD" : "#2A2D45",
+              color: email.trim() ? "#0A0C1A" : "#64748b",
+              border:"none",borderRadius:8,padding:"10px 0",fontSize:13.5,fontWeight:700,
+              cursor: email.trim() ? "pointer" : "default",fontFamily:"inherit",
+            }}>
+            {status === "sending" ? "Sending…" : "Send sign-in link"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterWidget({ selectedIds, onToggle, onClear, isSignedIn, onSignOut }) {
   const [open, setOpen] = useState(false);
   const count = selectedIds.size;
 
@@ -2215,7 +2293,7 @@ function FilterWidget({ selectedIds, onToggle, onClear }) {
         // pushing the panel off-screen to the left. A fixed top-right anchor
         // is predictable regardless of how the header wraps.
         <div style={{position:"fixed",top:64,right:12,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:300,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
-          <FilterPanel selectedIds={selectedIds} onToggle={onToggle} onClear={onClear} onClose={()=>setOpen(false)} />
+          <FilterPanel selectedIds={selectedIds} onToggle={onToggle} onClear={onClear} onClose={()=>setOpen(false)} isSignedIn={isSignedIn} onSignOut={onSignOut} />
         </div>
       )}
     </div>
@@ -2411,19 +2489,54 @@ export default function WhatsTherapy() {
   const [selected, setSelected]   = useState(null);
   const [filterIds, setFilterIds] = useState(() => new Set()); // node ids selected in the Filter panel
 
-  // ── My Map (stage 1: landing screen + questionnaire, no backend yet) ──────
+  // ── My Map (stage 2: real Supabase auth + persistence) ────────────────────
   // appMode drives which top-level screen renders: the Explore/My Map choice,
-  // the questionnaire, or the map itself (shared by both Explore and My Map —
-  // they differ only in which seed ids drive the filter-style view below).
-  // myMapIds is the node set My Map was built from; in this stage it lives
-  // only in memory and resets on page reload. Stage 2 replaces this with a
-  // real Supabase-backed load/save without changing how the rest of the app
-  // consumes myMapIds.
-  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "questionnaire" | "myMap"
+  // the sign-in form, the questionnaire, or the map itself (shared by both
+  // Explore and My Map — they differ only in which seed ids drive the
+  // filter-style view below).
+  // session is the Supabase auth session, null while signed out. authLoading
+  // is true only during the brief initial check for an existing session, so
+  // the landing screen doesn't flash before we know someone's already signed
+  // in (e.g. returning in the same browser later that day).
+  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap"
   const [myMapIds, setMyMapIds] = useState(() => new Set());
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [myMapLoaded, setMyMapLoaded] = useState(false); // has the saved_filters row finished loading for this session
+
+  // Check for an existing session on first load (covers: already signed in
+  // earlier today in this browser), and subscribe to auth state changes
+  // (covers: the magic-link redirect completing sign-in while the app is
+  // already open, and explicit sign-out).
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+      // A session already present on first load AND a URL that still has
+      // the auth redirect params means this load IS the magic-link return —
+      // skip the landing screen and go straight into My Map.
+      if (session && window.location.hash.includes("access_token")) {
+        setAppMode("myMap");
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      setSession(newSession);
+      if (event === "SIGNED_IN") {
+        setAppMode("myMap");
+      } else if (event === "SIGNED_OUT") {
+        setMyMapIds(new Set());
+        setMyMapLoaded(false);
+        setAppMode("landing");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleChooseExplore = () => setAppMode("explore");
   const handleChooseMyMap = () => {
+    if (!session) { setAppMode("signin"); return; }
     setAppMode(myMapIds.size > 0 ? "myMap" : "questionnaire");
   };
   const handleQuestionnaireComplete = (seedIds) => {
@@ -2431,6 +2544,7 @@ export default function WhatsTherapy() {
     setAppMode("myMap");
   };
   const handleQuestionnaireCancel = () => setAppMode("landing");
+  const handleSignOut = () => { supabase.auth.signOut(); };
 
   const [breadcrumb, setBreadcrumb] = useState([]);
   const [tab, setTab]             = useState("overview");
@@ -3186,6 +3300,57 @@ export default function WhatsTherapy() {
     // the canvas isn't even rendered while those modes are active.
   }, [appMode, myMapIds, applyFilterAnimation]);
 
+  // ── My Map persistence: load on sign-in ────────────────────────────────────
+  // Fetches the signed-in person's saved_filters row (if one exists) once per
+  // session, and applies it as myMapIds. Per the agreed conflict rule, the
+  // saved selection always wins — it simply replaces whatever was in memory,
+  // no merge with any local/anonymous selection.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("saved_filters")
+        .select("selected_topics")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        // Fail quietly into "no saved map yet" rather than show an error —
+        // this feature is a nice-to-have, not core functionality. Logged to
+        // the console only, for our own debugging.
+        console.error("Failed to load saved_filters:", error.message);
+      } else if (data?.selected_topics?.length) {
+        setMyMapIds(new Set(data.selected_topics));
+      }
+      setMyMapLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  // ── My Map persistence: save on change ─────────────────────────────────────
+  // Debounced so rapid changes (e.g. the questionnaire's multiple selections,
+  // or several long-press add/removes in a row — stage 3) settle into a
+  // single write rather than firing one per change. Skipped until the initial
+  // load above has finished, so a load-in-progress can't be overwritten by
+  // stale empty state, and skipped entirely while signed out.
+  const myMapSaveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!session || !myMapLoaded) return;
+    if (myMapSaveTimerRef.current) clearTimeout(myMapSaveTimerRef.current);
+    myMapSaveTimerRef.current = setTimeout(async () => {
+      const { error } = await supabase
+        .from("saved_filters")
+        .upsert({
+          user_id: session.user.id,
+          selected_topics: [...myMapIds],
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+      if (error) console.error("Failed to save saved_filters:", error.message);
+    }, 600);
+    return () => { if (myMapSaveTimerRef.current) clearTimeout(myMapSaveTimerRef.current); };
+  }, [myMapIds, session, myMapLoaded]);
+
   const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
     if(insightCache.current[selected]) { setInsight(insightCache.current[selected]); setTab("insight"); return; }
@@ -3268,7 +3433,13 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         }
       `}</style>
 
-      {appMode === "landing" && (
+      {authLoading && (
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{width:24,height:24,border:"2px solid #232752",borderTopColor:"#7F77DD",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        </div>
+      )}
+
+      {!authLoading && appMode === "landing" && (
         <LandingScreen
           hasMyMap={myMapIds.size > 0}
           onChooseExplore={handleChooseExplore}
@@ -3281,6 +3452,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onComplete={handleQuestionnaireComplete}
           onCancel={handleQuestionnaireCancel}
         />
+      )}
+
+      {appMode === "signin" && (
+        <SignInScreen onCancel={()=>setAppMode("landing")} />
       )}
 
       {(appMode === "explore" || appMode === "myMap") && (
@@ -3300,7 +3475,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             </button>
           </div>
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
-            <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} />
+            <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} isSignedIn={!!session} onSignOut={handleSignOut} />
             <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
           </div>
         </div>
