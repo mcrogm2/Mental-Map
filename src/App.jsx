@@ -2514,16 +2514,19 @@ export default function WhatsTherapy() {
       setAuthLoading(false);
       // A session already present on first load AND a URL that still has
       // the auth redirect params means this load IS the magic-link return —
-      // skip the landing screen and go straight into My Map.
+      // skip the landing screen. Don't jump straight to "myMap" here — we
+      // don't yet know if this person has a saved map or needs the
+      // questionnaire. The load-on-sign-in effect below makes that call
+      // once it actually knows, via the "loadingMyMap" transitional state.
       if (session && window.location.hash.includes("access_token")) {
-        setAppMode("myMap");
+        setAppMode("loadingMyMap");
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (event === "SIGNED_IN") {
-        setAppMode("myMap");
+        setAppMode("loadingMyMap");
       } else if (event === "SIGNED_OUT") {
         setMyMapIds(new Set());
         setMyMapLoaded(false);
@@ -3315,15 +3318,23 @@ export default function WhatsTherapy() {
         .eq("user_id", session.user.id)
         .maybeSingle();
       if (cancelled) return;
+      let loadedIds = null;
       if (error) {
         // Fail quietly into "no saved map yet" rather than show an error —
         // this feature is a nice-to-have, not core functionality. Logged to
         // the console only, for our own debugging.
         console.error("Failed to load saved_filters:", error.message);
       } else if (data?.selected_topics?.length) {
-        setMyMapIds(new Set(data.selected_topics));
+        loadedIds = new Set(data.selected_topics);
+        setMyMapIds(loadedIds);
       }
       setMyMapLoaded(true);
+      // If sign-in just completed (the transitional state set above), this
+      // is the one place that actually knows whether saved data exists —
+      // route to the questionnaire if not, or straight into the existing
+      // map if so. Mirrors the same decision handleChooseMyMap makes for a
+      // manual click, just triggered automatically after the load resolves.
+      setAppMode(mode => mode === "loadingMyMap" ? (loadedIds?.size ? "myMap" : "questionnaire") : mode);
     })();
     return () => { cancelled = true; };
   }, [session]);
@@ -3433,7 +3444,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         }
       `}</style>
 
-      {authLoading && (
+      {(authLoading || appMode === "loadingMyMap") && (
         <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{width:24,height:24,border:"2px solid #232752",borderTopColor:"#7F77DD",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
         </div>
