@@ -2691,10 +2691,22 @@ export default function WhatsTherapy() {
   // earlier today in this browser), and subscribe to auth state changes
   // (covers: the magic-link redirect completing sign-in while the app is
   // already open, and explicit sign-out).
+  //
+  // IMPORTANT: Supabase re-fires a SIGNED_IN event for the SAME already
+  // signed-in user surprisingly often — on tab focus, on token refresh, even
+  // just switching apps and back (this is a well-documented supabase-js
+  // behavior, not a bug in this app). Treating every SIGNED_IN as "a fresh
+  // sign-in just happened" was resetting appMode to the loading/routing
+  // state mid-session, which could bounce someone out of whatever they were
+  // doing (e.g. a freshly created, in-progress map) and back into the
+  // questionnaire if the routing check re-ran at the wrong moment. Fixed by
+  // only treating SIGNED_IN as meaningful when the user id actually changes.
+  const lastUserIdRef = useRef(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setAuthLoading(false);
+      lastUserIdRef.current = session?.user?.id ?? null;
       // A session already present on first load AND a URL that still has
       // the auth redirect params means this load IS the magic-link return —
       // skip the landing screen. Don't jump straight to "myMap" here — we
@@ -2709,8 +2721,17 @@ export default function WhatsTherapy() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (event === "SIGNED_IN") {
-        setAppMode("loadingMyMap");
+        const newUserId = newSession?.user?.id ?? null;
+        const isActuallyNewSignIn = newUserId !== lastUserIdRef.current;
+        lastUserIdRef.current = newUserId;
+        if (isActuallyNewSignIn) {
+          setAppMode("loadingMyMap");
+        }
+        // Same user re-firing SIGNED_IN: session object is refreshed above,
+        // but appMode is deliberately left untouched — whatever screen/map
+        // the person was already on stays exactly as it was.
       } else if (event === "SIGNED_OUT") {
+        lastUserIdRef.current = null;
         setMyMapIds(new Set());
         setMyMapLoaded(false);
         setAppMode("landing");
