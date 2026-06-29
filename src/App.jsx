@@ -2052,7 +2052,7 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
         </div>
       ) : (
         <div style={{padding:"0 16px 14px",fontSize:11.5,color:"#64748b",lineHeight:1.5}}>
-          💡 Sign in to save this across devices — try "My Map" from the home screen.
+          💡 Sign in to save this across devices — try "My Maps" from the home screen.
         </div>
       )}
     </div>
@@ -2096,7 +2096,7 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
             padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
             flex:"1 1 0",minWidth:0,maxWidth:220,textAlign:"left",
           }}>
-          <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>My Map</div>
+          <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>My Maps</div>
           <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
             {hasMyMap
               ? "Pick up your personalized map where you left off."
@@ -2304,7 +2304,7 @@ function SignInScreen({ onCancel }) {
         </div>
       ) : (
         <div style={{maxWidth:360,width:"100%"}}>
-          <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",marginBottom:8}}>Sign in to My Map</div>
+          <div style={{fontSize:17,fontWeight:600,color:"#f1f5f9",marginBottom:8}}>Sign in to My Maps</div>
           <div style={{fontSize:13.5,color:"#94a3b8",marginBottom:20,lineHeight:1.6}}>
             We'll email you a link — no password needed. This is what lets your map follow you across devices.
           </div>
@@ -2326,6 +2326,93 @@ function SignInScreen({ onCancel }) {
             }}>
             {status === "sending" ? "Sending…" : "Send sign-in link"}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── My Maps dropdown ─────────────────────────────────────────────────────────
+// Lists every map the signed-in person owns. Select to open one on the
+// canvas, rename inline, or delete with a Yes/No confirm (same visual
+// language as the long-press add/remove popup — a destructive action always
+// gets an explicit confirm step in this app).
+function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const current = processes.find(p => p.id === currentProcessId);
+
+  const startRename = (p) => { setRenamingId(p.id); setRenameValue(p.title); };
+  const commitRename = () => {
+    if (renamingId != null) onRename(renamingId, renameValue);
+    setRenamingId(null);
+  };
+
+  return (
+    <div style={{position:"relative"}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{background:"#11142A",border:"1px solid #232752",borderRadius:20,color:"#cbd5e1",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+        🗂 {current ? current.title : "My Maps"} ▾
+      </button>
+      {open && (
+        <div style={{position:"fixed",top:64,right:12,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:260,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px 8px"}}>
+            <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>My Maps</span>
+            <button onClick={()=>setOpen(false)} aria-label="Close"
+              style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:16,lineHeight:1,padding:4}}>✕</button>
+          </div>
+          <div style={{maxHeight:280,overflowY:"auto",padding:"0 8px 8px"}}>
+            {processes.length === 0 && (
+              <div style={{fontSize:12.5,color:"#64748b",padding:"8px 10px"}}>No maps yet.</div>
+            )}
+            {processes.map(p => (
+              <div key={p.id} style={{padding:"6px 8px",borderRadius:8,background: p.id===currentProcessId ? "rgba(127,119,221,0.12)" : "none"}}>
+                {renamingId === p.id ? (
+                  <input autoFocus value={renameValue} onChange={e=>setRenameValue(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==="Enter") commitRename(); if(e.key==="Escape") setRenamingId(null); }}
+                    onBlur={commitRename}
+                    style={{width:"100%",background:"#11142A",border:"1px solid #7F77DD",borderRadius:6,color:"#e2e8f0",fontSize:13,padding:"5px 8px",fontFamily:"inherit",boxSizing:"border-box"}}
+                  />
+                ) : (
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <button onClick={()=>{ onSelect(p.id); setOpen(false); }}
+                      style={{flex:1,textAlign:"left",background:"none",border:"none",color: p.id===currentProcessId ? "#e2e8f0" : "#94a3b8",fontSize:13,fontWeight: p.id===currentProcessId ? 600 : 400,cursor:"pointer",fontFamily:"inherit",padding:"4px 2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {p.title}
+                    </button>
+                    <button onClick={()=>startRename(p)} aria-label="Rename"
+                      style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:4}}>✎</button>
+                    <button onClick={()=>setConfirmDeleteId(p.id)} aria-label="Delete"
+                      style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:4}}>🗑</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId != null && (
+        <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)"}}
+          onClick={()=>setConfirmDeleteId(null)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#0D1024",border:"1px solid #232752",borderRadius:12,padding:"16px 18px",width:260,boxShadow:"0 12px 32px rgba(0,0,0,0.5)"}}>
+            <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.5,marginBottom:14}}>
+              Delete <span style={{fontWeight:700,color:"#e2e8f0"}}>{processes.find(p=>p.id===confirmDeleteId)?.title}</span>? This can't be undone.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setConfirmDeleteId(null)}
+                style={{flex:1,background:"none",border:"1px solid #232752",color:"#94a3b8",borderRadius:8,padding:"7px 0",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                No
+              </button>
+              <button onClick={()=>{ onDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+                style={{flex:1,background:"#fb7185",color:"#1a0a0d",border:"none",borderRadius:8,padding:"7px 0",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                Yes, delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -2566,7 +2653,6 @@ export default function WhatsTherapy() {
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [myMapLoaded, setMyMapLoaded] = useState(false); // has the saved_filters row finished loading for this session
 
   // ── Long-press add/remove popup (Stage 3) ──────────────────────────────────
   // longPressPopup is null when nothing's showing, or
@@ -2637,10 +2723,25 @@ export default function WhatsTherapy() {
   const handleChooseExplore = () => setAppMode("explore");
   const handleChooseMyMap = () => {
     if (!session) { setAppMode("signin"); return; }
-    setAppMode(myMapIds.size > 0 ? "myMap" : "questionnaire");
+    setAppMode(processes.length > 0 ? "myMap" : "questionnaire");
   };
-  const handleQuestionnaireComplete = (seedIds) => {
+  const handleQuestionnaireComplete = async (seedIds) => {
+    if (!session) return;
+    const { data, error } = await supabase
+      .from("processes")
+      .insert({ owner_id: session.user.id, title: "My Map" })
+      .select("id, title")
+      .single();
+    if (error) { console.error("Failed to create process from questionnaire:", error.message); return; }
+    const rows = [...seedIds].map((nodeId, i) => ({ process_id: data.id, node_id: nodeId, position: i }));
+    if (rows.length > 0) {
+      const { error: stepErr } = await supabase.from("process_steps").insert(rows);
+      if (stepErr) console.error("Failed to save questionnaire steps:", stepErr.message);
+    }
+    setProcesses(prev => [...prev, data]);
+    setCurrentProcessId(data.id);
     setMyMapIds(seedIds);
+    setMyMapLoaded(true); // steps are already saved above; no need to re-fetch
     setAppMode("myMap");
   };
   const handleQuestionnaireCancel = () => setAppMode("landing");
@@ -3449,64 +3550,129 @@ export default function WhatsTherapy() {
     // the canvas isn't even rendered while those modes are active.
   }, [appMode, myMapIds, applyFilterAnimation]);
 
-  // ── My Map persistence: load on sign-in ────────────────────────────────────
-  // Fetches the signed-in person's saved_filters row (if one exists) once per
-  // session, and applies it as myMapIds. Per the agreed conflict rule, the
-  // saved selection always wins — it simply replaces whatever was in memory,
-  // no merge with any local/anonymous selection.
+  // ── My Maps (plural): the gallery list ─────────────────────────────────────
+  // processes holds every map this person owns, for the My Maps dropdown.
+  // currentProcessId tracks which one is open on the canvas — null means
+  // nothing is open yet (e.g. right after sign-in, before a map is picked,
+  // or an empty gallery with no maps at all).
+  const [processes, setProcesses] = useState([]); // [{id, title}]
+  const [currentProcessId, setCurrentProcessId] = useState(null);
+  const [processesLoaded, setProcessesLoaded] = useState(false);
+
+  const refreshProcessList = useCallback(async (userId) => {
+    const { data, error } = await supabase
+      .from("processes")
+      .select("id, title")
+      .eq("owner_id", userId)
+      .order("created_at", { ascending: true });
+    if (error) {
+      console.error("Failed to load process list:", error.message);
+      return [];
+    }
+    setProcesses(data || []);
+    return data || [];
+  }, []);
+
+  // On sign-in: load the gallery list once, then decide routing exactly the
+  // way the old single-map version did — straight to a map if one exists, or
+  // the questionnaire if the gallery is empty. If multiple maps exist, opens
+  // the first (oldest) one by default; switching is what the dropdown is for.
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("saved_filters")
-        .select("selected_topics")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+      const list = await refreshProcessList(session.user.id);
       if (cancelled) return;
-      let loadedIds = null;
-      if (error) {
-        // Fail quietly into "no saved map yet" rather than show an error —
-        // this feature is a nice-to-have, not core functionality. Logged to
-        // the console only, for our own debugging.
-        console.error("Failed to load saved_filters:", error.message);
-      } else if (data?.selected_topics?.length) {
-        loadedIds = new Set(data.selected_topics);
-        setMyMapIds(loadedIds);
+      setProcessesLoaded(true);
+      if (list.length > 0) {
+        setCurrentProcessId(list[0].id);
       }
-      setMyMapLoaded(true);
-      // If sign-in just completed (the transitional state set above), this
-      // is the one place that actually knows whether saved data exists —
-      // route to the questionnaire if not, or straight into the existing
-      // map if so. Mirrors the same decision handleChooseMyMap makes for a
-      // manual click, just triggered automatically after the load resolves.
-      setAppMode(mode => mode === "loadingMyMap" ? (loadedIds?.size ? "myMap" : "questionnaire") : mode);
+      setAppMode(mode => mode === "loadingMyMap" ? (list.length > 0 ? "myMap" : "questionnaire") : mode);
     })();
     return () => { cancelled = true; };
-  }, [session]);
+  }, [session, refreshProcessList]);
 
-  // ── My Map persistence: save on change ─────────────────────────────────────
-  // Debounced so rapid changes (e.g. the questionnaire's multiple selections,
-  // or several long-press add/removes in a row — stage 3) settle into a
-  // single write rather than firing one per change. Skipped until the initial
-  // load above has finished, so a load-in-progress can't be overwritten by
-  // stale empty state, and skipped entirely while signed out.
+  // ── My Maps: load a specific process's steps when it becomes the open one ──
+  const [myMapLoaded, setMyMapLoaded] = useState(false);
+  useEffect(() => {
+    if (!session || !currentProcessId) return;
+    let cancelled = false;
+    setMyMapLoaded(false);
+    (async () => {
+      const { data, error } = await supabase
+        .from("process_steps")
+        .select("node_id")
+        .eq("process_id", currentProcessId)
+        .order("position", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load process steps:", error.message);
+      } else {
+        setMyMapIds(new Set((data || []).map(s => s.node_id)));
+      }
+      setMyMapLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [session, currentProcessId]);
+
+  // ── My Maps: save steps for whichever process is currently open ────────────
+  // Debounced, same pattern as before. Replaces ALL of the open process's
+  // steps with the current myMapIds on every save — simplest correct
+  // approach while step order/per-step text isn't exposed yet (A3).
   const myMapSaveTimerRef = useRef(null);
   useEffect(() => {
-    if (!session || !myMapLoaded) return;
+    if (!session || !myMapLoaded || !currentProcessId) return;
     if (myMapSaveTimerRef.current) clearTimeout(myMapSaveTimerRef.current);
     myMapSaveTimerRef.current = setTimeout(async () => {
-      const { error } = await supabase
-        .from("saved_filters")
-        .upsert({
-          user_id: session.user.id,
-          selected_topics: [...myMapIds],
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
-      if (error) console.error("Failed to save saved_filters:", error.message);
+      const { error: delErr } = await supabase
+        .from("process_steps")
+        .delete()
+        .eq("process_id", currentProcessId);
+      if (delErr) { console.error("Failed to clear old steps:", delErr.message); return; }
+      const rows = [...myMapIds].map((nodeId, i) => ({
+        process_id: currentProcessId, node_id: nodeId, position: i,
+      }));
+      if (rows.length > 0) {
+        const { error: insErr } = await supabase.from("process_steps").insert(rows);
+        if (insErr) console.error("Failed to save process steps:", insErr.message);
+      }
+      await supabase.from("processes").update({ updated_at: new Date().toISOString() }).eq("id", currentProcessId);
     }, 600);
     return () => { if (myMapSaveTimerRef.current) clearTimeout(myMapSaveTimerRef.current); };
-  }, [myMapIds, session, myMapLoaded]);
+  }, [myMapIds, session, myMapLoaded, currentProcessId]);
+
+  // ── My Maps: create / rename / delete ───────────────────────────────────────
+  const createNewProcess = useCallback(async () => {
+    if (!session) return;
+    const { data, error } = await supabase
+      .from("processes")
+      .insert({ owner_id: session.user.id, title: "Untitled map" })
+      .select("id, title")
+      .single();
+    if (error) { console.error("Failed to create process:", error.message); return; }
+    setProcesses(prev => [...prev, data]);
+    setCurrentProcessId(data.id);
+    setMyMapIds(new Set());
+    setMyMapLoaded(true); // a brand new map has no steps to wait on loading
+  }, [session]);
+
+  const renameProcess = useCallback(async (processId, newTitle) => {
+    if (!newTitle || !newTitle.trim()) return;
+    const { error } = await supabase.from("processes").update({ title: newTitle.trim() }).eq("id", processId);
+    if (error) { console.error("Failed to rename process:", error.message); return; }
+    setProcesses(prev => prev.map(p => p.id === processId ? { ...p, title: newTitle.trim() } : p));
+  }, []);
+
+  const deleteProcess = useCallback(async (processId) => {
+    const { error } = await supabase.from("processes").delete().eq("id", processId);
+    if (error) { console.error("Failed to delete process:", error.message); return; }
+    setProcesses(prev => prev.filter(p => p.id !== processId));
+    if (currentProcessId === processId) {
+      setCurrentProcessId(null);
+      setMyMapIds(new Set());
+      setAppMode("questionnaire");
+    }
+  }, [currentProcessId]);
 
   const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
@@ -3598,7 +3764,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
       {!authLoading && appMode === "landing" && (
         <LandingScreen
-          hasMyMap={myMapIds.size > 0}
+          hasMyMap={processes.length > 0}
           onChooseExplore={handleChooseExplore}
           onChooseMyMap={handleChooseMyMap}
         />
@@ -3628,9 +3794,24 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             </button>
             <button onClick={handleChooseMyMap}
               style={{background: appMode==="myMap" ? "#232752" : "none",border:"none",borderRadius:18,color: appMode==="myMap" ? "#e2e8f0" : "#64748b",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
-              My Map
+              My Maps
             </button>
           </div>
+          {appMode === "myMap" && (
+            <>
+              <MyMapsDropdown
+                processes={processes}
+                currentProcessId={currentProcessId}
+                onSelect={setCurrentProcessId}
+                onRename={renameProcess}
+                onDelete={deleteProcess}
+              />
+              <button onClick={createNewProcess}
+                style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#7F77DD",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                + Create a new map
+              </button>
+            </>
+          )}
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
             <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} isSignedIn={!!session} onSignOut={handleSignOut} />
             <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
