@@ -2346,18 +2346,30 @@ function SignInScreen({ onCancel }) {
 // Per spec, this is optional: closing without typing anything is fine.
 function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, onClose, onRemove }) {
   const [value, setValue] = useState(initialValue || "");
+  // Tracks whether the mousedown that started this gesture actually began on
+  // the backdrop itself (not inside the popup). Without this, selecting text
+  // in the textarea by dragging and releasing the mouse outside the popup
+  // would fire a click on the backdrop and incorrectly close/save — a click
+  // event fires wherever the mouse is released, regardless of where the
+  // drag started.
+  const backdropMouseDownRef = useRef(false);
 
   const save = () => { onSave(value); onClose(); };
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)"}}
-      onClick={save}>
-      <div onClick={e=>e.stopPropagation()}
-        style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,padding:"18px 20px",width:320,maxWidth:"calc(100vw - 32px)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+      onMouseDown={e => { backdropMouseDownRef.current = (e.target === e.currentTarget); }}
+      onMouseUp={e => { if (backdropMouseDownRef.current && e.target === e.currentTarget) save(); backdropMouseDownRef.current = false; }}>
+      <div onMouseDown={e=>e.stopPropagation()} onMouseUp={e=>e.stopPropagation()}
+        style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,padding:"18px 20px",width:320,maxWidth:"calc(100vw - 32px)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",position:"relative"}}>
+        <button onClick={onClose} aria-label="Close"
+          style={{position:"absolute",top:10,right:10,background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:16,lineHeight:1,padding:6}}>
+          ✕
+        </button>
         <div style={{fontSize:11.5,color:"#7F77DD",fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>
           Step {stepNumber}
         </div>
-        <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:12}}>{nodeLabel}</div>
+        <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:12,paddingRight:20}}>{nodeLabel}</div>
         <textarea autoFocus value={value} onChange={e=>setValue(e.target.value)}
           placeholder="Add a note for this step (optional)…"
           rows={4}
@@ -2368,7 +2380,7 @@ function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, 
           Save
         </button>
         <button onClick={onRemove}
-          style={{width:"100%",background:"none",border:"1px solid #3a2230",color:"#fb7185",borderRadius:8,padding:"8px 0",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{width:"100%",background:"none",border:"1px solid #7F77DD",color:"#7F77DD",borderRadius:8,padding:"8px 0",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
           Remove node from flow
         </button>
       </div>
