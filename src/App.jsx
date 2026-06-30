@@ -271,7 +271,65 @@ class EdgeWaveAnimator {
   destroy() { if (this.rafId) cancelAnimationFrame(this.rafId); }
 }
 
-// Cluster-aware sizing: recompute node radii based only on within-cluster degrees
+// Drives the subtle traveling-dot animation along a My Map's step sequence
+// (1→2→3→…→back to 1, looping). Deliberately a small, separate class rather
+// than extending EdgeWaveAnimator — that one is a one-shot wave radiating
+// OUT from whatever node is currently clicked; this is a continuous loop
+// along a fixed, ordered path that has nothing to do with selection. Two
+// different concepts that happen to both animate along lines.
+class ProcessFlowAnimator {
+  constructor() {
+    this.rafId = null;
+    this.listeners = [];
+    this.t = 0;           // 0..1 progress along the WHOLE path (all segments combined)
+    this.segmentCount = 0;
+    this.running = false;
+    this.paused = false;
+    this.lastFrameTime = 0;
+  }
+  subscribe(fn) { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter(l=>l!==fn); }; }
+  notify() { this.listeners.forEach(fn => fn()); }
+
+  start(segmentCount) {
+    this.segmentCount = segmentCount;
+    if (this.running) return;
+    this.running = true;
+    this.lastFrameTime = performance.now();
+    const SECONDS_PER_SEGMENT = 1.8; // subtle, unhurried — tune here if it ever feels too slow/fast
+    const tick = (now) => {
+      if (!this.running) return;
+      const dt = (now - this.lastFrameTime) / 1000;
+      this.lastFrameTime = now;
+      if (!this.paused && this.segmentCount > 0) {
+        const totalDuration = SECONDS_PER_SEGMENT * this.segmentCount;
+        this.t = (this.t + dt / totalDuration) % 1;
+        this.notify();
+      }
+      this.rafId = requestAnimationFrame(tick);
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+  setSegmentCount(n) { this.segmentCount = n; }
+  setPaused(p) { this.paused = p; }
+  stop() {
+    this.running = false;
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.t = 0;
+  }
+  // Returns { segmentIndex, localT } — which segment (0-indexed) the dot is
+  // currently on, and how far along that segment (0..1).
+  getPosition() {
+    if (this.segmentCount === 0) return { segmentIndex: 0, localT: 0 };
+    const scaled = this.t * this.segmentCount;
+    const segmentIndex = Math.min(this.segmentCount - 1, Math.floor(scaled));
+    const localT = scaled - segmentIndex;
+    return { segmentIndex, localT };
+  }
+  destroy() { this.stop(); }
+}
+const processFlow = new ProcessFlowAnimator();
+
+
 function computeClusterSizes(selectedId, nodes, edges, baseRanges) {
   const cluster = new Set();
   if (selectedId) {
@@ -3012,6 +3070,7 @@ export default function WhatsTherapy() {
   // Animated node state (updated by animator outside React render)
   const [animState, setAnimState] = useState(null);
   const [edgeWaveTick, setEdgeWaveTick] = useState(0); // bumps on every edge-wave frame
+  const [processFlowTick, setProcessFlowTick] = useState(0); // bumps on every process-flow animation frame
   const svgRef = useRef(null);
   const selectedRef = useRef(null);
   const selectNodeRef = useRef(null); // always points to the latest selectNode — avoids stale closures in touch/mouse handlers that were memoized once with an empty/stable dep array
@@ -3022,7 +3081,8 @@ export default function WhatsTherapy() {
     animator.init(NODES, NODE_SIZES, basePos);
     const unsub = animator.subscribe(state => setAnimState({...state}));
     const unsubEdge = edgeWave.subscribe(() => setEdgeWaveTick(t => t + 1));
-    return () => { unsub(); unsubEdge(); animator.destroy(); edgeWave.destroy(); };
+    const unsubFlow = processFlow.subscribe(() => setProcessFlowTick(t => t + 1));
+    return () => { unsub(); unsubEdge(); unsubFlow(); animator.destroy(); edgeWave.destroy(); processFlow.destroy(); };
   }, []);
 
   // ── Draggable panel width ──────────────────────────────────────────────────
@@ -3808,6 +3868,30 @@ export default function WhatsTherapy() {
   const [myMapStepNotes, setMyMapStepNotes] = useState({}); // { [nodeId]: stepSummary } for the currently open process
   const [myMapStepOrder, setMyMapStepOrder] = useState({}); // { [nodeId]: 1-indexed position } for the currently open process
 
+  // Ordered array of node ids for the currently open My Map, derived from
+  // myMapStepOrder — the single source the traveling-dot animation (and its
+  // path-line rendering) both read from.
+  const myMapOrderedIds = Object.keys(myMapStepOrder)
+    .sort((a, b) => myMapStepOrder[a] - myMapStepOrder[b]);
+
+  // Drive the subtle traveling-dot animation: runs only in My Map, only with
+  // 2+ ordered steps (need at least one segment to travel along), and pauses
+  // — without resetting position — whenever a node's detail panel is open,
+  // per the agreed "less visual noise while reading" behavior.
+  useEffect(() => {
+    const segmentCount = Math.max(0, myMapOrderedIds.length - 1);
+    if (appMode === "myMap" && segmentCount > 0) {
+      processFlow.start(segmentCount);
+      processFlow.setSegmentCount(segmentCount); // keep in sync if step count changes while already running
+    } else {
+      processFlow.stop();
+    }
+  }, [appMode, myMapOrderedIds.length]);
+
+  useEffect(() => {
+    processFlow.setPaused(!!selected);
+  }, [selected]);
+
   useEffect(() => {
     if (!session || !currentProcessId) return;
     if (locallyKnownProcessIdRef.current === currentProcessId) {
@@ -4357,6 +4441,40 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 </g>
               );
             })}
+
+            {/* Process flow — a subtle traveling dot along My Map's step
+                sequence (1→2→3→…→loops back to 1). Deliberately separate
+                from the regular EDGES rendering above: these path lines are
+                drawn between CONSECUTIVE STEPS regardless of whether a real
+                graph edge exists between them, since the whole point is a
+                reliable, always-visible path through a hand-built sequence —
+                not a reflection of the underlying node-relationship data. */}
+            {appMode === "myMap" && myMapOrderedIds.length > 1 && myMapOrderedIds.map((nodeId, i) => {
+              if (i === myMapOrderedIds.length - 1) return null; // last node has no "next" segment
+              const fromAnim = animState?.[nodeId], toAnim = animState?.[myMapOrderedIds[i+1]];
+              const fx = fromAnim?.x ?? basePos(nodeId).x, fy = fromAnim?.y ?? basePos(nodeId).y;
+              const tx = toAnim?.x ?? basePos(myMapOrderedIds[i+1]).x, ty = toAnim?.y ?? basePos(myMapOrderedIds[i+1]).y;
+              return (
+                <line key={`flow-path-${nodeId}`} x1={fx} y1={fy} x2={tx} y2={ty}
+                  stroke="#3B9EFF" strokeWidth="1.5" strokeOpacity="0.35" strokeLinecap="round"
+                />
+              );
+            })}
+            {appMode === "myMap" && myMapOrderedIds.length > 1 && (() => {
+              const { segmentIndex, localT } = processFlow.getPosition();
+              const fromId = myMapOrderedIds[segmentIndex], toId = myMapOrderedIds[segmentIndex + 1];
+              if (!fromId || !toId) return null;
+              const fromAnim = animState?.[fromId], toAnim = animState?.[toId];
+              const fx = fromAnim?.x ?? basePos(fromId).x, fy = fromAnim?.y ?? basePos(fromId).y;
+              const tx = toAnim?.x ?? basePos(toId).x, ty = toAnim?.y ?? basePos(toId).y;
+              const dotX = fx + (tx - fx) * localT, dotY = fy + (ty - fy) * localT;
+              return (
+                <g style={{pointerEvents:"none"}}>
+                  <circle cx={dotX} cy={dotY} r={7} fill="#3B9EFF" opacity={0.25}/>
+                  <circle cx={dotX} cy={dotY} r={3.5} fill="#3B9EFF" opacity={0.95}/>
+                </g>
+              );
+            })()}
 
             {/* Nodes */}
             {NODES.map(n=>{
