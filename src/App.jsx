@@ -2375,14 +2375,14 @@ function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, 
 // Shown when "Done" is tapped — the actual save point, per spec. Asks for a
 // title (e.g. "Tackling anxiety in the moment") before the process and its
 // steps are written to Supabase.
-function BuilderDoneModal({ stepCount, onSave, onClose }) {
-  const [title, setTitle] = useState("");
+function BuilderDoneModal({ stepCount, initialTitle, isEditing, onSave, onClose }) {
+  const [title, setTitle] = useState(initialTitle || "");
   return (
     <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)"}}
       onClick={onClose}>
       <div onClick={e=>e.stopPropagation()}
         style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,padding:"20px 22px",width:320,maxWidth:"calc(100vw - 32px)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
-        <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:4}}>Name your map</div>
+        <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:4}}>{isEditing ? "Save changes" : "Name your map"}</div>
         <div style={{fontSize:12.5,color:"#94a3b8",marginBottom:14}}>
           {stepCount} step{stepCount===1?"":"s"} — e.g. "Tackling anxiety in the moment"
         </div>
@@ -2398,7 +2398,7 @@ function BuilderDoneModal({ stepCount, onSave, onClose }) {
           </button>
           <button onClick={()=>onSave(title)} disabled={!title.trim()}
             style={{flex:1,background: title.trim() ? "#7F77DD" : "#2A2D45",color: title.trim() ? "#0A0C1A" : "#64748b",border:"none",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:700,cursor: title.trim() ? "pointer" : "default",fontFamily:"inherit"}}>
-            Save map
+            {isEditing ? "Save" : "Save map"}
           </button>
         </div>
       </div>
@@ -3684,14 +3684,28 @@ export default function WhatsTherapy() {
 
   // ── My Maps: load a specific process's steps when it becomes the open one ──
   const [myMapLoaded, setMyMapLoaded] = useState(false);
+  // Tracks process ids whose steps we already know locally (just built, just
+  // saved) so the load effect below can skip a redundant fetch — without
+  // this, that fetch could race the save that just happened and overwrite
+  // the correct myMapIds with a stale/incomplete read. See finishProcessBuilder.
+  const locallyKnownProcessIdRef = useRef(null);
+
+  const [myMapStepNotes, setMyMapStepNotes] = useState({}); // { [nodeId]: stepSummary } for the currently open process
+
   useEffect(() => {
     if (!session || !currentProcessId) return;
+    if (locallyKnownProcessIdRef.current === currentProcessId) {
+      // We just set myMapIds ourselves (e.g. right after finishing the
+      // builder) — skip fetching, nothing has changed since.
+      locallyKnownProcessIdRef.current = null;
+      return;
+    }
     let cancelled = false;
     setMyMapLoaded(false);
     (async () => {
       const { data, error } = await supabase
         .from("process_steps")
-        .select("node_id")
+        .select("node_id, step_summary")
         .eq("process_id", currentProcessId)
         .order("position", { ascending: true });
       if (cancelled) return;
@@ -3699,6 +3713,9 @@ export default function WhatsTherapy() {
         console.error("Failed to load process steps:", error.message);
       } else {
         setMyMapIds(new Set((data || []).map(s => s.node_id)));
+        const notes = {};
+        (data || []).forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
+        setMyMapStepNotes(notes);
       }
       setMyMapLoaded(true);
     })();
@@ -3743,12 +3760,29 @@ export default function WhatsTherapy() {
   const [builderShowDoneModal, setBuilderShowDoneModal] = useState(false);
   const [builderDescNodeId, setBuilderDescNodeId] = useState(null);
 
+  const [builderEditingProcessId, setBuilderEditingProcessId] = useState(null); // null = creating new; otherwise editing this existing process
+
   const startNewProcessBuilder = useCallback(() => {
     setBuilderSteps([]);
     setBuilderDescNodeId(null);
     setBuilderShowDoneModal(false);
+    setBuilderEditingProcessId(null);
     setAppMode("builder");
   }, []);
+
+  // Re-enter the builder for the map currently open in My Map, pre-filled
+  // with its existing steps (in their saved order) and notes, so someone can
+  // add, remove, or reorder-by-rebuilding rather than only ever creating
+  // something new.
+  const startEditProcessBuilder = useCallback(() => {
+    if (!currentProcessId) return;
+    const existing = [...myMapIds].map(nodeId => ({ nodeId, summary: myMapStepNotes[nodeId] || "" }));
+    setBuilderSteps(existing);
+    setBuilderDescNodeId(null);
+    setBuilderShowDoneModal(false);
+    setBuilderEditingProcessId(currentProcessId);
+    setAppMode("builder");
+  }, [currentProcessId, myMapIds, myMapStepNotes]);
 
   // Three-way tap rule, exactly as specified:
   //  - not yet selected      -> add as next step, open its description popover
@@ -3781,11 +3815,51 @@ export default function WhatsTherapy() {
     setBuilderSteps([]);
     setBuilderDescNodeId(null);
     setBuilderShowDoneModal(false);
+    setBuilderEditingProcessId(null);
     setAppMode("myMap");
   }, []);
 
   const finishProcessBuilder = useCallback(async (title) => {
     if (!session || builderSteps.length === 0) return;
+
+    if (builderEditingProcessId) {
+      // Editing an existing map: update its title (if changed) and replace
+      // its steps wholesale — same "delete then insert" pattern already
+      // used by the regular My Map save effect, just triggered from Done
+      // instead of a debounce.
+      const { error: titleErr } = await supabase
+        .from("processes")
+        .update({ title: title?.trim() || "Untitled map", updated_at: new Date().toISOString() })
+        .eq("id", builderEditingProcessId);
+      if (titleErr) { console.error("Failed to update process title:", titleErr.message); return; }
+      const { error: delErr } = await supabase
+        .from("process_steps")
+        .delete()
+        .eq("process_id", builderEditingProcessId);
+      if (delErr) { console.error("Failed to clear old steps:", delErr.message); return; }
+      const rows = builderSteps.map((s, i) => ({
+        process_id: builderEditingProcessId, node_id: s.nodeId, position: i, step_summary: s.summary || null,
+      }));
+      const { error: insErr } = await supabase.from("process_steps").insert(rows);
+      if (insErr) { console.error("Failed to save edited steps:", insErr.message); return; }
+
+      setProcesses(prev => prev.map(p => p.id === builderEditingProcessId ? { ...p, title: title?.trim() || "Untitled map" } : p));
+      locallyKnownProcessIdRef.current = builderEditingProcessId;
+      setCurrentProcessId(builderEditingProcessId);
+      setMyMapIds(new Set(builderSteps.map(s => s.nodeId)));
+      const notes = {};
+      builderSteps.forEach(s => { if (s.summary) notes[s.nodeId] = s.summary; });
+      setMyMapStepNotes(notes);
+      setMyMapLoaded(true);
+      setBuilderSteps([]);
+      setBuilderDescNodeId(null);
+      setBuilderEditingProcessId(null);
+      setBuilderShowDoneModal(false);
+      setAppMode("myMap");
+      return;
+    }
+
+    // Creating a brand new map.
     const { data, error } = await supabase
       .from("processes")
       .insert({ owner_id: session.user.id, title: title?.trim() || "Untitled map" })
@@ -3798,13 +3872,17 @@ export default function WhatsTherapy() {
     const { error: stepErr } = await supabase.from("process_steps").insert(rows);
     if (stepErr) { console.error("Failed to save builder steps:", stepErr.message); return; }
     setProcesses(prev => [...prev, data]);
+    locallyKnownProcessIdRef.current = data.id;
     setCurrentProcessId(data.id);
     setMyMapIds(new Set(builderSteps.map(s => s.nodeId)));
+    const notes = {};
+    builderSteps.forEach(s => { if (s.summary) notes[s.nodeId] = s.summary; });
+    setMyMapStepNotes(notes);
     setMyMapLoaded(true);
     setBuilderSteps([]);
     setBuilderDescNodeId(null);
     setAppMode("myMap");
-  }, [session, builderSteps]);
+  }, [session, builderSteps, builderEditingProcessId]);
 
   const renameProcess = useCallback(async (processId, newTitle) => {
     if (!newTitle || !newTitle.trim()) return;
@@ -3977,6 +4055,12 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 onRename={renameProcess}
                 onDelete={deleteProcess}
               />
+              {currentProcessId && (
+                <button onClick={startEditProcessBuilder}
+                  style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                  ✎ Edit steps
+                </button>
+              )}
               <button onClick={startNewProcessBuilder}
                 style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#7F77DD",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 + Create a new map
@@ -4414,6 +4498,14 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 >
                 {tab==="overview" && (
                   <div>
+                    {appMode === "myMap" && myMapStepNotes[selected] && (
+                      <div style={{background:"rgba(127,119,221,0.1)",border:"1px solid #7F77DD",borderRadius:8,padding:"10px 12px",marginBottom:14}}>
+                        <div style={{fontSize:10.5,fontWeight:700,color:"#7F77DD",letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>
+                          Your note for this step
+                        </div>
+                        <div style={{fontSize:13,color:"#e2e8f0",lineHeight:1.6}}>{myMapStepNotes[selected]}</div>
+                      </div>
+                    )}
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
                     <div style={{fontSize:13,lineHeight:1.75,color:"#cbd5e1",background:"#060812",borderRadius:8,padding:"12px 14px",marginBottom:14,border:"1px solid #1C2040"}}>{renderRichText(selectedNode.content)}</div>
 
@@ -4578,6 +4670,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       {appMode === "builder" && builderShowDoneModal && (
         <BuilderDoneModal
           stepCount={builderSteps.length}
+          initialTitle={builderEditingProcessId ? processes.find(p=>p.id===builderEditingProcessId)?.title : ""}
+          isEditing={!!builderEditingProcessId}
           onSave={(title)=>finishProcessBuilder(title)}
           onClose={()=>setBuilderShowDoneModal(false)}
         />
