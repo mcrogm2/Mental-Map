@@ -3731,10 +3731,15 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
   const selectedNode = nodeById(selected);
   const connected    = selected ? connectedSet(selected) : null;
-  // When a filter is active (and no single node is selected over it), edges
-  // within the filtered cluster get the same "highlighted" treatment that
-  // connected edges get during single-node selection.
-  const filterConnected = (!selected && filterIds.size > 0) ? multiConnectedSet(filterIds) : null;
+  // The "filtered cluster reads as bright/connected" treatment is specific
+  // to the Filter widget's use in EXPLORE mode — when you filter to
+  // "Anxiety" there, the whole point is seeing that cluster clearly. My Map
+  // is a real map you navigate and build, not a one-off filtered view, so
+  // it should default to the same dim appearance Explore has with nothing
+  // selected, and only light up when a specific node is actually clicked
+  // (handled by `connected` above, which already works the same in both
+  // modes).
+  const filterConnected = (!selected && appMode === "explore" && filterIds.size > 0) ? multiConnectedSet(filterIds) : null;
   const hasPractice  = selected && !!PRACTICES[selected];
   const hasHistory   = selected && !!HISTORY[selected];
   const hasLinks     = selected && !!LINKS[selected];
