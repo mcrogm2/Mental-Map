@@ -2337,6 +2337,75 @@ function SignInScreen({ onCancel }) {
 // canvas, rename inline, or delete with a Yes/No confirm (same visual
 // language as the long-press add/remove popup — a destructive action always
 // gets an explicit confirm step in this app).
+// ── Process Builder: step description popup ─────────────────────────────────
+// Opens automatically when a node is selected (or an earlier step is
+// re-tapped) in the Process Builder. A centered modal rather than a
+// node-anchored tooltip — text entry needs room for an on-screen keyboard on
+// mobile, which a small anchored popup would risk getting covered by.
+// Per spec, this is optional: closing without typing anything is fine.
+function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, onClose }) {
+  const [value, setValue] = useState(initialValue || "");
+
+  const save = () => { onSave(value); onClose(); };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)"}}
+      onClick={save}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,padding:"18px 20px",width:320,maxWidth:"calc(100vw - 32px)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+        <div style={{fontSize:11.5,color:"#7F77DD",fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>
+          Step {stepNumber}
+        </div>
+        <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:12}}>{nodeLabel}</div>
+        <textarea autoFocus value={value} onChange={e=>setValue(e.target.value)}
+          placeholder="Add a note for this step (optional)…"
+          rows={4}
+          style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:13,padding:"8px 10px",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:12}}
+        />
+        <button onClick={save}
+          style={{width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Process Builder: name-and-save modal ─────────────────────────────────────
+// Shown when "Done" is tapped — the actual save point, per spec. Asks for a
+// title (e.g. "Tackling anxiety in the moment") before the process and its
+// steps are written to Supabase.
+function BuilderDoneModal({ stepCount, onSave, onClose }) {
+  const [title, setTitle] = useState("");
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)"}}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,padding:"20px 22px",width:320,maxWidth:"calc(100vw - 32px)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
+        <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:4}}>Name your map</div>
+        <div style={{fontSize:12.5,color:"#94a3b8",marginBottom:14}}>
+          {stepCount} step{stepCount===1?"":"s"} — e.g. "Tackling anxiety in the moment"
+        </div>
+        <input autoFocus value={title} onChange={e=>setTitle(e.target.value)}
+          placeholder="Map name"
+          onKeyDown={e=>{ if(e.key==="Enter" && title.trim()) onSave(title); }}
+          style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:14,padding:"9px 12px",fontFamily:"inherit",boxSizing:"border-box",marginBottom:14}}
+        />
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose}
+            style={{flex:1,background:"none",border:"1px solid #232752",color:"#94a3b8",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+            Back
+          </button>
+          <button onClick={()=>onSave(title)} disabled={!title.trim()}
+            style={{flex:1,background: title.trim() ? "#7F77DD" : "#2A2D45",color: title.trim() ? "#0A0C1A" : "#64748b",border:"none",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:700,cursor: title.trim() ? "pointer" : "default",fontFamily:"inherit"}}>
+            Save map
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDelete }) {
   const [open, setOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
@@ -3663,19 +3732,79 @@ export default function WhatsTherapy() {
   }, [myMapIds, session, myMapLoaded, currentProcessId]);
 
   // ── My Maps: create / rename / delete ───────────────────────────────────────
-  const createNewProcess = useCallback(async () => {
-    if (!session) return;
+  // ── Process Builder (Stage A3) ──────────────────────────────────────────────
+  // Entering the builder does NOT touch the database at all — per the agreed
+  // spec, "Done" is the only save point. Everything here lives in local
+  // state until then, so an abandoned build never leaves a stray empty map
+  // in the gallery.
+  // builderSteps is the ordered, in-progress sequence: [{nodeId, summary}].
+  // builderDescNodeId tracks which step's description popover is open.
+  const [builderSteps, setBuilderSteps] = useState([]);
+  const [builderShowDoneModal, setBuilderShowDoneModal] = useState(false);
+  const [builderDescNodeId, setBuilderDescNodeId] = useState(null);
+
+  const startNewProcessBuilder = useCallback(() => {
+    setBuilderSteps([]);
+    setBuilderDescNodeId(null);
+    setBuilderShowDoneModal(false);
+    setAppMode("builder");
+  }, []);
+
+  // Three-way tap rule, exactly as specified:
+  //  - not yet selected      -> add as next step, open its description popover
+  //  - the LAST selected step -> remove it (only the most recent can be undone this way)
+  //  - an EARLIER selected step -> reopen its description popover, don't remove
+  const handleBuilderNodeTap = useCallback((nodeId) => {
+    setBuilderSteps(prev => {
+      const idx = prev.findIndex(s => s.nodeId === nodeId);
+      if (idx === -1) {
+        // Not yet selected — add as the next step.
+        setBuilderDescNodeId(nodeId);
+        return [...prev, { nodeId, summary: "" }];
+      }
+      if (idx === prev.length - 1) {
+        // The last step — tapping it again removes it.
+        setBuilderDescNodeId(null);
+        return prev.slice(0, -1);
+      }
+      // An earlier step — reopen its description for editing, don't remove.
+      setBuilderDescNodeId(nodeId);
+      return prev;
+    });
+  }, []);
+
+  const setBuilderStepSummary = useCallback((nodeId, summary) => {
+    setBuilderSteps(prev => prev.map(s => s.nodeId === nodeId ? { ...s, summary } : s));
+  }, []);
+
+  const cancelProcessBuilder = useCallback(() => {
+    setBuilderSteps([]);
+    setBuilderDescNodeId(null);
+    setBuilderShowDoneModal(false);
+    setAppMode("myMap");
+  }, []);
+
+  const finishProcessBuilder = useCallback(async (title) => {
+    if (!session || builderSteps.length === 0) return;
     const { data, error } = await supabase
       .from("processes")
-      .insert({ owner_id: session.user.id, title: "Untitled map" })
+      .insert({ owner_id: session.user.id, title: title?.trim() || "Untitled map" })
       .select("id, title")
       .single();
     if (error) { console.error("Failed to create process:", error.message); return; }
+    const rows = builderSteps.map((s, i) => ({
+      process_id: data.id, node_id: s.nodeId, position: i, step_summary: s.summary || null,
+    }));
+    const { error: stepErr } = await supabase.from("process_steps").insert(rows);
+    if (stepErr) { console.error("Failed to save builder steps:", stepErr.message); return; }
     setProcesses(prev => [...prev, data]);
     setCurrentProcessId(data.id);
-    setMyMapIds(new Set());
-    setMyMapLoaded(true); // a brand new map has no steps to wait on loading
-  }, [session]);
+    setMyMapIds(new Set(builderSteps.map(s => s.nodeId)));
+    setMyMapLoaded(true);
+    setBuilderSteps([]);
+    setBuilderDescNodeId(null);
+    setAppMode("myMap");
+  }, [session, builderSteps]);
 
   const renameProcess = useCallback(async (processId, newTitle) => {
     if (!newTitle || !newTitle.trim()) return;
@@ -3807,12 +3936,27 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         <SignInScreen onCancel={()=>setAppMode("landing")} />
       )}
 
-      {(appMode === "explore" || appMode === "myMap") && (
+      {(appMode === "explore" || appMode === "myMap" || appMode === "builder") && (
         <>
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
           <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>What's Therapy</span>
+          {appMode === "builder" ? (
+            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:12,color:"#64748b"}}>
+                {builderSteps.length === 0 ? "Tap nodes to build your map" : `${builderSteps.length} step${builderSteps.length===1?"":"s"}`}
+              </span>
+              <button onClick={cancelProcessBuilder}
+                style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                Cancel
+              </button>
+              <button onClick={()=>setBuilderShowDoneModal(true)} disabled={builderSteps.length===0}
+                style={{background: builderSteps.length>0 ? "#7F77DD" : "#2A2D45",color: builderSteps.length>0 ? "#0A0C1A" : "#64748b",border:"none",borderRadius:20,fontSize:12,fontWeight:700,padding:"5px 16px",cursor: builderSteps.length>0 ? "pointer" : "default",fontFamily:"inherit"}}>
+                Done
+              </button>
+            </div>
+          ) : (
           <div style={{display:"flex",background:"#11142A",border:"1px solid #232752",borderRadius:20,padding:2}}>
             <button onClick={handleChooseExplore}
               style={{background: appMode==="explore" ? "#232752" : "none",border:"none",borderRadius:18,color: appMode==="explore" ? "#e2e8f0" : "#64748b",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
@@ -3823,6 +3967,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               My Maps
             </button>
           </div>
+          )}
           {appMode === "myMap" && (
             <>
               <MyMapsDropdown
@@ -3832,16 +3977,18 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 onRename={renameProcess}
                 onDelete={deleteProcess}
               />
-              <button onClick={createNewProcess}
+              <button onClick={startNewProcessBuilder}
                 style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#7F77DD",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 + Create a new map
               </button>
             </>
           )}
+          {appMode !== "builder" && (
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
             <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} isSignedIn={!!session} onSignOut={handleSignOut} />
             <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
           </div>
+          )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:18,padding:"2px 20px 12px",flexWrap:"wrap"}}>
           {LEGEND.map(l=>(
@@ -3989,13 +4136,21 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             {/* Nodes */}
             {NODES.map(n=>{
               const c = COLORS[n.type];
+              const isBuilder = appMode === "builder";
+              const builderIdx = isBuilder ? builderSteps.findIndex(s => s.nodeId === n.id) : -1;
+              const builderSelected = builderIdx !== -1;
+
               const anim = animState?.[n.id];
-              const r    = anim?.radius ?? NODE_SIZES[n.id] ?? 22;
-              const op   = anim?.opacity ?? 1;
-              const glow = anim?.glow ?? 0;
-              const pulse = anim?.pulse ?? 0;
-              const nx   = anim?.x ?? basePos(n.id).x;
-              const ny   = anim?.y ?? basePos(n.id).y;
+              // Builder mode never touches the animated system — canvas stays
+              // still, no zoom/gather, exactly per spec. Position/size come
+              // straight from the node's base layout; only opacity/styling
+              // changes to reflect builder selection.
+              const r    = isBuilder ? (NODE_SIZES[n.id] ?? 22) : (anim?.radius ?? NODE_SIZES[n.id] ?? 22);
+              const op   = isBuilder ? (builderSelected ? 1 : 0.32) : (anim?.opacity ?? 1);
+              const glow = isBuilder ? (builderSelected ? 0.7 : 0) : (anim?.glow ?? 0);
+              const pulse = isBuilder ? 0 : (anim?.pulse ?? 0);
+              const nx   = isBuilder ? basePos(n.id).x : (anim?.x ?? basePos(n.id).x);
+              const ny   = isBuilder ? basePos(n.id).y : (anim?.y ?? basePos(n.id).y);
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
@@ -4007,10 +4162,11 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <g key={n.id}
                   transform={`translate(${nx},${ny})`}
                   opacity={op}
-                  style={{cursor: op < 0.05 ? "default" : "grab"}}
-                  onMouseDown={e => op > 0.05 && onNodeMouseDown(e, n.id)}
-                  onTouchStart={e => op > 0.05 && onNodeTouchStart(e, n.id)}
+                  style={{cursor: isBuilder ? "pointer" : (op < 0.05 ? "default" : "grab")}}
+                  onMouseDown={e => { if (isBuilder) { e.stopPropagation(); handleBuilderNodeTap(n.id); } else { op > 0.05 && onNodeMouseDown(e, n.id); } }}
+                  onTouchStart={e => { if (isBuilder) { e.stopPropagation(); e.preventDefault(); handleBuilderNodeTap(n.id); } else { op > 0.05 && onNodeTouchStart(e, n.id); } }}
                   onMouseEnter={e => {
+                    if (isBuilder) return; // no hover tooltip in builder mode — tapping IS the interaction
                     if (op < 0.1) return;
                     const svg = e.currentTarget.closest("svg");
                     const rect = svg.getBoundingClientRect();
@@ -4074,9 +4230,18 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                       match the Starry Night reference: every star has a lit center */}
                   <circle r={r*0.4} fill="#fff" opacity={isSel ? 0.85 : 0.55}/>
 
-                  {hasPr && !isSel && (
+                  {hasPr && !isSel && !isBuilder && (
                     <circle r={4} cx={r-3} cy={-(r-3)}
                       fill="#378ADD" stroke="#070914" strokeWidth="1.5"/>
+                  )}
+                  {isBuilder && builderSelected && (
+                    <g transform={`translate(${r-2},${-(r-2)})`}>
+                      <circle r={11} fill="#7F77DD" stroke="#0A0C1A" strokeWidth="2"/>
+                      <text textAnchor="middle" dominantBaseline="central" y={1}
+                        fontSize={12} fontWeight={700} fill="#0A0C1A" fontFamily="Inter,sans-serif">
+                        {builderIdx + 1}
+                      </text>
+                    </g>
                   )}
                   {/* Label sits BELOW the node, colored to match its type — matches reference */}
                   {lines.map((ln,i)=>(
@@ -4397,6 +4562,24 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onConfirm={confirmLongPressAdd}
           onSignIn={goToSignInFromLongPress}
           onClose={closeLongPressPopup}
+        />
+      )}
+
+      {appMode === "builder" && builderDescNodeId && (
+        <BuilderDescriptionPopup
+          nodeLabel={nodeById(builderDescNodeId)?.label.replace("\n"," ")}
+          stepNumber={builderSteps.findIndex(s => s.nodeId === builderDescNodeId) + 1}
+          initialValue={builderSteps.find(s => s.nodeId === builderDescNodeId)?.summary}
+          onSave={(text)=>setBuilderStepSummary(builderDescNodeId, text)}
+          onClose={()=>setBuilderDescNodeId(null)}
+        />
+      )}
+
+      {appMode === "builder" && builderShowDoneModal && (
+        <BuilderDoneModal
+          stepCount={builderSteps.length}
+          onSave={(title)=>finishProcessBuilder(title)}
+          onClose={()=>setBuilderShowDoneModal(false)}
         />
       )}
     </div>
