@@ -2458,20 +2458,42 @@ function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, 
 // from too, so canvas and sidebar never disagree. Each row's X removes that
 // step regardless of position (the canvas tap rule no longer removes
 // anything itself — removal lives here and inside the description popup).
-function BuilderStepsSidebar({ steps, onReorder, onSelectStep, onRemoveStep }) {
+function BuilderStepsSidebar({ steps, onReorder, onSelectStep, onRemoveStep, onAddNode }) {
+  const [searchOpen, setSearchOpen] = useState(true);
+  const selectedNodeIds = new Set(steps.map(s => s.nodeId));
+
   return (
     <div style={{
       width:280,flexShrink:0,
       background:"#0A0C1A",borderLeft:"1px solid #1C2040",
       display:"flex",flexDirection:"column",
+      overflowY:"auto",
     }}>
+      <div style={{padding:"14px 16px 10px",borderBottom:"1px solid #1C2040"}}>
+        <button onClick={()=>setSearchOpen(o=>!o)}
+          style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>+ Add a node</div>
+          <span style={{color:"#64748b",fontSize:11,transform: searchOpen ? "rotate(180deg)" : "none",transition:"transform 0.15s"}}>▾</span>
+        </button>
+        {searchOpen && (
+          <div style={{marginTop:10}}>
+            <MultiSelectSearch
+              types={["modality","concept","challenge","skill"]}
+              selectedIds={selectedNodeIds}
+              onToggle={onAddNode}
+              placeholder="Search nodes to add…"
+            />
+          </div>
+        )}
+      </div>
+
       <div style={{padding:"14px 16px 10px",borderBottom:"1px solid #1C2040"}}>
         <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>Steps</div>
         <div style={{fontSize:11.5,color:"#64748b",marginTop:2}}>Drag to reorder</div>
       </div>
       {steps.length === 0 ? (
         <div style={{padding:"20px 16px",fontSize:12.5,color:"#64748b",lineHeight:1.6}}>
-          Tap nodes on the map to add steps — they'll appear here too.
+          Tap nodes on the map, or search above, to add steps.
         </div>
       ) : (
         <Reorder.Group axis="y" values={steps.map(s=>s.nodeId)} onReorder={onReorder}
@@ -4468,10 +4490,18 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const fx = fromAnim?.x ?? basePos(fromId).x, fy = fromAnim?.y ?? basePos(fromId).y;
               const tx = toAnim?.x ?? basePos(toId).x, ty = toAnim?.y ?? basePos(toId).y;
               const dotX = fx + (tx - fx) * localT, dotY = fy + (ty - fy) * localT;
+              // Angle of travel, in degrees, for rotating the triangle to point
+              // toward the destination node. SVG's rotate() is clockwise from
+              // the positive x-axis; atan2 already gives us exactly that.
+              const angleDeg = Math.atan2(ty - fy, tx - fx) * (180 / Math.PI);
               return (
                 <g style={{pointerEvents:"none"}}>
                   <circle cx={dotX} cy={dotY} r={7} fill="#3B9EFF" opacity={0.25}/>
-                  <circle cx={dotX} cy={dotY} r={3.5} fill="#3B9EFF" opacity={0.95}/>
+                  <polygon
+                    points="5,0 -3,-3.5 -3,3.5"
+                    fill="#3B9EFF" opacity={0.95}
+                    transform={`translate(${dotX},${dotY}) rotate(${angleDeg})`}
+                  />
                 </g>
               );
             })()}
@@ -4886,6 +4916,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             onReorder={reorderBuilderSteps}
             onSelectStep={(nodeId)=>setBuilderDescNodeId(nodeId)}
             onRemoveStep={removeBuilderStep}
+            onAddNode={handleBuilderNodeTap}
           />
         )}
       </div>
