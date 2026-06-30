@@ -3173,13 +3173,20 @@ export default function WhatsTherapy() {
     if (e.touches.length === 0) panTouchRef.current = null;
   }, []);
 
-  // Attach wheel listener as non-passive so we can preventDefault
+  // Attach wheel listener as non-passive so we can preventDefault.
+  // IMPORTANT: depends on appMode, not just onWheel — the SVG only exists
+  // while appMode is explore/myMap/builder (see the conditional render
+  // below). Without this dependency, this effect's first run can land on a
+  // render where the canvas isn't mounted yet (e.g. the landing screen),
+  // find svgRef.current === null, bail out via the early return, and never
+  // retry — permanently breaking scroll-wheel zoom for the entire session
+  // even after the canvas does mount.
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [onWheel]);
+  }, [onWheel, appMode]);
 
   // Keep viewBoxRef in sync when viewBox changes externally (cluster recentering)
   useEffect(() => {
