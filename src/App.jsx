@@ -2802,6 +2802,8 @@ export default function WhatsTherapy() {
       } else if (event === "SIGNED_OUT") {
         lastUserIdRef.current = null;
         setMyMapIds(new Set());
+        setMyMapStepNotes({});
+        setMyMapStepOrder({});
         setMyMapLoaded(false);
         setAppMode("landing");
       }
@@ -3484,7 +3486,7 @@ export default function WhatsTherapy() {
   const filterTimerRef = useRef(null);
   const filterIdsRef = useRef(new Set());
 
-  const applyFilterAnimation = useCallback((idsSet) => {
+  const applyFilterAnimation = useCallback((idsSet, exactOnly = false) => {
     selectionTimersRef.current.forEach(t => clearTimeout(t));
     selectionTimersRef.current = [];
 
@@ -3502,7 +3504,14 @@ export default function WhatsTherapy() {
       return;
     }
 
-    const cluster = multiConnectedSet(idsSet);
+    // My Map (exactOnly=true): a deliberately built process should show
+    // EXACTLY the chosen nodes — no automatic neighbor expansion. The
+    // Filter widget in Explore (exactOnly=false, the default) keeps its
+    // original behavior of also revealing each chosen node's direct
+    // connections, which is correct there (the point of filtering to
+    // "Anxiety" is seeing its whole neighborhood) but wrong for a map
+    // someone hand-picked node by node.
+    const cluster = exactOnly ? new Set(idsSet) : multiConnectedSet(idsSet);
 
     // Stage 1 (0ms): fade non-matching, illuminate matching
     const fade = {};
@@ -3517,8 +3526,12 @@ export default function WhatsTherapy() {
 
     // Stage 2 (160ms): rescale + gather
     selectionTimersRef.current.push(setTimeout(() => {
-      const clusterSizes = computeMultiClusterSizes(idsSet, NODES, EDGES, DEGREE_RANGES);
-      const gatheredPos  = computeMultiGatheredPositions(idsSet, NODES, EDGES);
+      const clusterSizes = exactOnly
+        ? Object.fromEntries(NODES.map(n => [n.id, cluster.has(n.id) ? (NODE_SIZES[n.id] ?? 22) : (DEGREE_RANGES[n.type]?.min ?? 14)]))
+        : computeMultiClusterSizes(idsSet, NODES, EDGES, DEGREE_RANGES);
+      const gatheredPos  = exactOnly
+        ? Object.fromEntries(NODES.map(n => [n.id, basePos(n.id)]))
+        : computeMultiGatheredPositions(idsSet, NODES, EDGES);
       const resize = {};
       NODES.forEach(n => {
         resize[n.id] = {
@@ -3551,8 +3564,10 @@ export default function WhatsTherapy() {
 
     if (filterIdsRef.current.size > 0) {
       // A filter is active — deselecting the node should return to the
-      // filtered view, not the full unfiltered map.
-      applyFilterAnimation(filterIdsRef.current);
+      // filtered view, not the full unfiltered map. exactOnly matches
+      // whichever mode we're actually in: My Map shows exactly its chosen
+      // nodes, Explore's Filter widget still expands to neighbors.
+      applyFilterAnimation(filterIdsRef.current, appMode === "myMap");
       return;
     }
 
@@ -3566,7 +3581,7 @@ export default function WhatsTherapy() {
 
     // Reset viewbox after slight delay
     selectionTimersRef.current.push(setTimeout(() => resetViewBox(), 50));
-  }, [resetViewBox, applyFilterAnimation]);
+  }, [resetViewBox, applyFilterAnimation, appMode]);
 
   // ── Filter (multi-topic selection), continued ──────────────────────────────
   // toggleFilterId/scheduleFilterApply/clearFilter — the public API the
@@ -3610,6 +3625,8 @@ export default function WhatsTherapy() {
       // Same reasoning as toggleFilterId above — "Clear all" while viewing
       // My Map clears the actual saved map, not a throwaway filter.
       setMyMapIds(new Set());
+      setMyMapStepNotes({});
+      setMyMapStepOrder({});
       return;
     }
     const next = new Set();
@@ -3630,11 +3647,11 @@ export default function WhatsTherapy() {
     if (appMode === "myMap") {
       filterIdsRef.current = myMapIds;
       setFilterIds(myMapIds);
-      applyFilterAnimation(myMapIds);
+      applyFilterAnimation(myMapIds, true); // exactOnly — a built map shows exactly its chosen nodes, no neighbor expansion
     } else if (appMode === "explore") {
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
-      applyFilterAnimation(new Set());
+      applyFilterAnimation(new Set(), false);
     }
     // landing/questionnaire modes don't touch the canvas filter state at all —
     // the canvas isn't even rendered while those modes are active.
@@ -3691,6 +3708,7 @@ export default function WhatsTherapy() {
   const locallyKnownProcessIdRef = useRef(null);
 
   const [myMapStepNotes, setMyMapStepNotes] = useState({}); // { [nodeId]: stepSummary } for the currently open process
+  const [myMapStepOrder, setMyMapStepOrder] = useState({}); // { [nodeId]: 1-indexed position } for the currently open process
 
   useEffect(() => {
     if (!session || !currentProcessId) return;
@@ -3714,8 +3732,13 @@ export default function WhatsTherapy() {
       } else {
         setMyMapIds(new Set((data || []).map(s => s.node_id)));
         const notes = {};
-        (data || []).forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
+        const order = {};
+        (data || []).forEach((s, i) => {
+          if (s.step_summary) notes[s.node_id] = s.step_summary;
+          order[s.node_id] = i + 1;
+        });
         setMyMapStepNotes(notes);
+        setMyMapStepOrder(order);
       }
       setMyMapLoaded(true);
     })();
@@ -3848,8 +3871,10 @@ export default function WhatsTherapy() {
       setCurrentProcessId(builderEditingProcessId);
       setMyMapIds(new Set(builderSteps.map(s => s.nodeId)));
       const notes = {};
-      builderSteps.forEach(s => { if (s.summary) notes[s.nodeId] = s.summary; });
+      const order = {};
+      builderSteps.forEach((s, i) => { if (s.summary) notes[s.nodeId] = s.summary; order[s.nodeId] = i + 1; });
       setMyMapStepNotes(notes);
+      setMyMapStepOrder(order);
       setMyMapLoaded(true);
       setBuilderSteps([]);
       setBuilderDescNodeId(null);
@@ -3876,8 +3901,10 @@ export default function WhatsTherapy() {
     setCurrentProcessId(data.id);
     setMyMapIds(new Set(builderSteps.map(s => s.nodeId)));
     const notes = {};
-    builderSteps.forEach(s => { if (s.summary) notes[s.nodeId] = s.summary; });
+    const order = {};
+    builderSteps.forEach((s, i) => { if (s.summary) notes[s.nodeId] = s.summary; order[s.nodeId] = i + 1; });
     setMyMapStepNotes(notes);
+    setMyMapStepOrder(order);
     setMyMapLoaded(true);
     setBuilderSteps([]);
     setBuilderDescNodeId(null);
@@ -3898,6 +3925,8 @@ export default function WhatsTherapy() {
     if (currentProcessId === processId) {
       setCurrentProcessId(null);
       setMyMapIds(new Set());
+      setMyMapStepNotes({});
+      setMyMapStepOrder({});
       setAppMode("questionnaire");
     }
   }, [currentProcessId]);
@@ -4314,7 +4343,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                       match the Starry Night reference: every star has a lit center */}
                   <circle r={r*0.4} fill="#fff" opacity={isSel ? 0.85 : 0.55}/>
 
-                  {hasPr && !isSel && !isBuilder && (
+                  {hasPr && !isSel && !isBuilder && !(appMode === "myMap" && myMapStepOrder[n.id]) && (
                     <circle r={4} cx={r-3} cy={-(r-3)}
                       fill="#378ADD" stroke="#070914" strokeWidth="1.5"/>
                   )}
@@ -4324,6 +4353,15 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                       <text textAnchor="middle" dominantBaseline="central" y={1}
                         fontSize={12} fontWeight={700} fill="#0A0C1A" fontFamily="Inter,sans-serif">
                         {builderIdx + 1}
+                      </text>
+                    </g>
+                  )}
+                  {appMode === "myMap" && myMapStepOrder[n.id] && (
+                    <g transform={`translate(${r-2},${-(r-2)})`}>
+                      <circle r={11} fill="#7F77DD" stroke="#0A0C1A" strokeWidth="2"/>
+                      <text textAnchor="middle" dominantBaseline="central" y={1}
+                        fontSize={12} fontWeight={700} fill="#0A0C1A" fontFamily="Inter,sans-serif">
+                        {myMapStepOrder[n.id]}
                       </text>
                     </g>
                   )}
