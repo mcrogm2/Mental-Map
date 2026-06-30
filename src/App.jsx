@@ -3410,22 +3410,25 @@ export default function WhatsTherapy() {
     // in EdgeWaveAnimator so it can be re-enabled later once refined.
     // edgeWave.select(id, NODES, EDGES);
 
-    // Normally a click's cluster is just that node's own neighborhood. But if
-    // a filter is active, the filter's hidden nodes must stay hidden — so we
-    // intersect the clicked node's neighborhood with the filter's own visible
-    // cluster, rather than always using the whole graph. In My Map specifically,
-    // "the filter's visible cluster" must be EXACTLY myMapIds (no neighbor
-    // expansion) — otherwise clicking into one of a hand-picked map's nodes
-    // would silently reveal all its real-graph neighbors again, undoing the
-    // whole point of a deliberately built map.
-    let cluster = new Set([id]);
-    EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
-    if (filterIdsRef.current.size > 0) {
-      const filterCluster = appMode === "myMap"
-        ? new Set(filterIdsRef.current)
-        : multiConnectedSet(filterIdsRef.current);
-      cluster = new Set([...cluster].filter(nid => filterCluster.has(nid)));
-      cluster.add(id); // the clicked node is always visible, even if filter math somehow excluded it
+    // Normally a click's cluster is just that node's own neighborhood,
+    // intersected with the active filter's visible set (Explore's Filter
+    // widget). My Map is different: clicking a node should NEVER change
+    // which nodes are visible — the whole point of a hand-built map is that
+    // it stays exactly as built. So in My Map, the cluster is unconditionally
+    // every node already in the map, full stop — no neighborhood
+    // intersection at all. Only the clicked node's highlight changes.
+    let cluster;
+    if (appMode === "myMap") {
+      cluster = new Set(filterIdsRef.current);
+      cluster.add(id);
+    } else {
+      cluster = new Set([id]);
+      EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
+      if (filterIdsRef.current.size > 0) {
+        const filterCluster = multiConnectedSet(filterIdsRef.current);
+        cluster = new Set([...cluster].filter(nid => filterCluster.has(nid)));
+        cluster.add(id); // the clicked node is always visible, even if filter math somehow excluded it
+      }
     }
     const clusterArr = [...cluster];
 
