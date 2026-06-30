@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Reorder } from "motion/react";
 import { supabase } from "./supabaseClient";
 
 // ── Animation engine ───────────────────────────────────────────────────────────
@@ -2343,7 +2344,7 @@ function SignInScreen({ onCancel }) {
 // node-anchored tooltip — text entry needs room for an on-screen keyboard on
 // mobile, which a small anchored popup would risk getting covered by.
 // Per spec, this is optional: closing without typing anything is fine.
-function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, onClose }) {
+function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, onClose, onRemove }) {
   const [value, setValue] = useState(initialValue || "");
 
   const save = () => { onSave(value); onClose(); };
@@ -2363,8 +2364,12 @@ function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, 
           style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:8,color:"#e2e8f0",fontSize:13,padding:"8px 10px",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",marginBottom:12}}
         />
         <button onClick={save}
-          style={{width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>
           Save
+        </button>
+        <button onClick={onRemove}
+          style={{width:"100%",background:"none",border:"1px solid #3a2230",color:"#fb7185",borderRadius:8,padding:"8px 0",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+          Remove node from flow
         </button>
       </div>
     </div>
@@ -2375,6 +2380,71 @@ function BuilderDescriptionPopup({ nodeLabel, stepNumber, initialValue, onSave, 
 // Shown when "Done" is tapped — the actual save point, per spec. Asks for a
 // title (e.g. "Tackling anxiety in the moment") before the process and its
 // steps are written to Supabase.
+// ── Process Builder: steps sidebar ──────────────────────────────────────────
+// A reorderable list view of the builder's current sequence, living
+// alongside the canvas rather than replacing the tap-to-build interaction —
+// both stay in sync since they share the same builderSteps state. Dragging a
+// row reorders builderSteps directly, which the canvas's number badges read
+// from too, so canvas and sidebar never disagree. Each row's X removes that
+// step regardless of position (the canvas tap rule no longer removes
+// anything itself — removal lives here and inside the description popup).
+function BuilderStepsSidebar({ steps, onReorder, onSelectStep, onRemoveStep }) {
+  return (
+    <div style={{
+      width:280,flexShrink:0,
+      background:"#0A0C1A",borderLeft:"1px solid #1C2040",
+      display:"flex",flexDirection:"column",
+    }}>
+      <div style={{padding:"14px 16px 10px",borderBottom:"1px solid #1C2040"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>Steps</div>
+        <div style={{fontSize:11.5,color:"#64748b",marginTop:2}}>Drag to reorder</div>
+      </div>
+      {steps.length === 0 ? (
+        <div style={{padding:"20px 16px",fontSize:12.5,color:"#64748b",lineHeight:1.6}}>
+          Tap nodes on the map to add steps — they'll appear here too.
+        </div>
+      ) : (
+        <Reorder.Group axis="y" values={steps.map(s=>s.nodeId)} onReorder={onReorder}
+          style={{listStyle:"none",margin:0,padding:"8px",overflowY:"auto",flex:1}}>
+          {steps.map((s, i) => {
+            const n = nodeById(s.nodeId);
+            const c = COLORS[n?.type] || COLORS.modality;
+            return (
+              <Reorder.Item key={s.nodeId} value={s.nodeId}
+                style={{
+                  display:"flex",alignItems:"center",gap:8,
+                  background:"#11142A",border:"1px solid #232752",borderRadius:10,
+                  padding:"8px 10px",marginBottom:6,cursor:"grab",
+                }}>
+                <span style={{
+                  width:20,height:20,borderRadius:"50%",background:"#7F77DD",color:"#0A0C1A",
+                  fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",
+                  flexShrink:0,
+                }}>
+                  {i+1}
+                </span>
+                <span style={{width:8,height:8,borderRadius:"50%",background:c.fill,flexShrink:0}}/>
+                <button onClick={()=>onSelectStep(s.nodeId)}
+                  style={{
+                    flex:1,textAlign:"left",background:"none",border:"none",color:"#e2e8f0",
+                    fontSize:12.5,fontWeight:500,cursor:"pointer",fontFamily:"inherit",padding:0,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                  }}>
+                  {n?.label.replace("\n"," ") || s.nodeId}
+                </button>
+                <button onClick={()=>onRemoveStep(s.nodeId)} aria-label="Remove from flow"
+                  style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,padding:2,flexShrink:0}}>
+                  ✕
+                </button>
+              </Reorder.Item>
+            );
+          })}
+        </Reorder.Group>
+      )}
+    </div>
+  );
+}
+
 function BuilderDoneModal({ stepCount, initialTitle, isEditing, onSave, onClose }) {
   const [title, setTitle] = useState(initialTitle || "");
   return (
@@ -3835,14 +3905,28 @@ export default function WhatsTherapy() {
         setBuilderDescNodeId(nodeId);
         return [...prev, { nodeId, summary: "" }];
       }
-      if (idx === prev.length - 1) {
-        // The last step — tapping it again removes it.
-        setBuilderDescNodeId(null);
-        return prev.slice(0, -1);
-      }
-      // An earlier step — reopen its description for editing, don't remove.
+      // Already selected (last step or an earlier one) — just reopen its
+      // description popup. Removal is no longer triggered by tapping; it's
+      // now an explicit "Remove node from flow" action inside the popup
+      // itself, so it can never happen by accident.
       setBuilderDescNodeId(nodeId);
       return prev;
+    });
+  }, []);
+
+  const removeBuilderStep = useCallback((nodeId) => {
+    setBuilderSteps(prev => prev.filter(s => s.nodeId !== nodeId));
+    setBuilderDescNodeId(null);
+  }, []);
+
+  // Motion's Reorder.Group reports the new order as a plain array of the
+  // `value`s we gave it (node ids) — map that back onto the full step
+  // objects so summaries aren't lost, and so builderSteps stays the one
+  // source of truth the canvas's number badges read from too.
+  const reorderBuilderSteps = useCallback((newNodeIdOrder) => {
+    setBuilderSteps(prev => {
+      const byId = Object.fromEntries(prev.map(s => [s.nodeId, s]));
+      return newNodeIdOrder.map(nodeId => byId[nodeId]).filter(Boolean);
     });
   }, []);
 
@@ -4665,6 +4749,15 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             </div>
           </div>
         )}
+
+        {appMode === "builder" && (
+          <BuilderStepsSidebar
+            steps={builderSteps}
+            onReorder={reorderBuilderSteps}
+            onSelectStep={(nodeId)=>setBuilderDescNodeId(nodeId)}
+            onRemoveStep={removeBuilderStep}
+          />
+        )}
       </div>
 
       {/* Overview fullscreen overlay — map/tabs stay mounted underneath,
@@ -4718,6 +4811,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           initialValue={builderSteps.find(s => s.nodeId === builderDescNodeId)?.summary}
           onSave={(text)=>setBuilderStepSummary(builderDescNodeId, text)}
           onClose={()=>setBuilderDescNodeId(null)}
+          onRemove={()=>removeBuilderStep(builderDescNodeId)}
         />
       )}
 
