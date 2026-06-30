@@ -3413,11 +3413,17 @@ export default function WhatsTherapy() {
     // Normally a click's cluster is just that node's own neighborhood. But if
     // a filter is active, the filter's hidden nodes must stay hidden — so we
     // intersect the clicked node's neighborhood with the filter's own visible
-    // cluster, rather than always using the whole graph.
+    // cluster, rather than always using the whole graph. In My Map specifically,
+    // "the filter's visible cluster" must be EXACTLY myMapIds (no neighbor
+    // expansion) — otherwise clicking into one of a hand-picked map's nodes
+    // would silently reveal all its real-graph neighbors again, undoing the
+    // whole point of a deliberately built map.
     let cluster = new Set([id]);
     EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
     if (filterIdsRef.current.size > 0) {
-      const filterCluster = multiConnectedSet(filterIdsRef.current);
+      const filterCluster = appMode === "myMap"
+        ? new Set(filterIdsRef.current)
+        : multiConnectedSet(filterIdsRef.current);
       cluster = new Set([...cluster].filter(nid => filterCluster.has(nid)));
       cluster.add(id); // the clicked node is always visible, even if filter math somehow excluded it
     }
@@ -3470,7 +3476,7 @@ export default function WhatsTherapy() {
     // Stage 5 (600ms): hand glow over to the breathe loop once everything settles
     selectionTimersRef.current.push(setTimeout(() => animator.startBreathe(id), 600));
 
-  }, [recenterToCluster]);
+  }, [recenterToCluster, appMode]);
 
   // Keep selectNodeRef pointed at the latest selectNode — touch/mouse handlers
   // below are memoized once (stable empty deps) and call through this ref so
