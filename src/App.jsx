@@ -2539,10 +2539,17 @@ function BuilderStepsSidebar({ steps, onReorder, onSelectStep, onRemoveStep, onA
 
 function BuilderDoneModal({ stepCount, initialTitle, isEditing, onSave, onClose }) {
   const [title, setTitle] = useState(initialTitle || "");
+  // Same fix as BuilderDescriptionPopup: only treat this as "dismiss" if both
+  // the mousedown AND mouseup happened on the backdrop itself — otherwise
+  // selecting the title text by dragging and releasing outside the modal
+  // would incorrectly close it (a click fires wherever the mouse is
+  // released, not where the drag started).
+  const backdropMouseDownRef = useRef(false);
   return (
     <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(3,4,10,0.6)",backdropFilter:"blur(3px)"}}
-      onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()}
+      onMouseDown={e => { backdropMouseDownRef.current = (e.target === e.currentTarget); }}
+      onMouseUp={e => { if (backdropMouseDownRef.current && e.target === e.currentTarget) onClose(); backdropMouseDownRef.current = false; }}>
+      <div onMouseDown={e=>e.stopPropagation()} onMouseUp={e=>e.stopPropagation()}
         style={{background:"#0D1024",border:"1px solid #232752",borderRadius:14,padding:"20px 22px",width:320,maxWidth:"calc(100vw - 32px)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)"}}>
         <div style={{fontSize:15,fontWeight:600,color:"#e2e8f0",marginBottom:4}}>{isEditing ? "Save changes" : "Name your map"}</div>
         <div style={{fontSize:12.5,color:"#94a3b8",marginBottom:14}}>
@@ -3950,9 +3957,9 @@ export default function WhatsTherapy() {
   }, [session, currentProcessId]);
 
   // ── My Maps: save steps for whichever process is currently open ────────────
-  // Debounced, same pattern as before. Replaces ALL of the open process's
-  // steps with the current myMapIds on every save — simplest correct
-  // approach while step order/per-step text isn't exposed yet (A3).
+  // Debounced. Replaces ALL of the open process's steps on every save,
+  // preserving step order (from myMapStepOrder) and per-step notes
+  // (from myMapStepNotes) so comments survive map switches and manual saves.
   const myMapSaveTimerRef = useRef(null);
   useEffect(() => {
     if (!session || !myMapLoaded || !currentProcessId) return;
@@ -3963,8 +3970,18 @@ export default function WhatsTherapy() {
         .delete()
         .eq("process_id", currentProcessId);
       if (delErr) { console.error("Failed to clear old steps:", delErr.message); return; }
-      const rows = [...myMapIds].map((nodeId, i) => ({
-        process_id: currentProcessId, node_id: nodeId, position: i,
+      // Sort by saved step order if available, otherwise preserve Set insertion order.
+      // This ensures drag-reordered steps don't silently revert their sequence on save.
+      const orderedIds = [...myMapIds].sort((a, b) => {
+        const posA = myMapStepOrder[a] ?? Infinity;
+        const posB = myMapStepOrder[b] ?? Infinity;
+        return posA - posB;
+      });
+      const rows = orderedIds.map((nodeId, i) => ({
+        process_id: currentProcessId,
+        node_id: nodeId,
+        position: i,
+        step_summary: myMapStepNotes[nodeId] || null,
       }));
       if (rows.length > 0) {
         const { error: insErr } = await supabase.from("process_steps").insert(rows);
@@ -3973,7 +3990,7 @@ export default function WhatsTherapy() {
       await supabase.from("processes").update({ updated_at: new Date().toISOString() }).eq("id", currentProcessId);
     }, 600);
     return () => { if (myMapSaveTimerRef.current) clearTimeout(myMapSaveTimerRef.current); };
-  }, [myMapIds, session, myMapLoaded, currentProcessId]);
+  }, [myMapIds, myMapStepNotes, myMapStepOrder, session, myMapLoaded, currentProcessId]);
 
   // ── My Maps: create / rename / delete ───────────────────────────────────────
   // ── Process Builder (Stage A3) ──────────────────────────────────────────────
