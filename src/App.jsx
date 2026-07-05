@@ -33,6 +33,16 @@ class NodeAnimator {
       this.current[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:p.x, y:p.y };
     });
   }
+  // Hard-resets x/y in BOTH current and targets for every node using the
+  // provided position getter. Call this when switching modes so the animator
+  // never springs from stale positions left over from a previous mode.
+  resetPositions(nodes, getPos) {
+    nodes.forEach(n => {
+      const p = getPos(n.id);
+      if (this.current[n.id]) { this.current[n.id].x = p.x; this.current[n.id].y = p.y; }
+      if (this.targets[n.id]) { this.targets[n.id].x = p.x; this.targets[n.id].y = p.y; }
+    });
+  }
   setTargets(newTargets) {
     Object.entries(newTargets).forEach(([id, vals]) => {
       if (this.targets[id]) Object.assign(this.targets[id], vals);
@@ -3864,19 +3874,19 @@ export default function WhatsTherapy() {
   // already does for the Filter panel.
   useEffect(() => {
     if (appMode === "myMap") {
-      // Use currentProcessId directly from state (not the ref) — the ref update
-      // is scheduled by its own effect and may not have run yet when this fires.
-      animator.init(NODES, NODE_SIZES, (id) => {
-        const pid = currentProcessId;
-        return (pid && positionOverlayRef.current.maps[pid]?.[id])
-          ? positionOverlayRef.current.maps[pid][id]
+      // Hard-reset both current AND targets to myMap positions before animating —
+      // this prevents the animator from springing from explore-dragged coordinates.
+      animator.resetPositions(NODES, (id) => {
+        return (currentProcessId && positionOverlayRef.current.maps[currentProcessId]?.[id])
+          ? positionOverlayRef.current.maps[currentProcessId][id]
           : BASE_POSITIONS[id] || { x: 0, y: 0 };
       });
       filterIdsRef.current = myMapIds;
       setFilterIds(myMapIds);
       applyFilterAnimation(myMapIds, true);
     } else if (appMode === "explore") {
-      animator.init(NODES, NODE_SIZES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
+      // Hard-reset to explore overlay positions so myMap drags don't bleed back.
+      animator.resetPositions(NODES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
