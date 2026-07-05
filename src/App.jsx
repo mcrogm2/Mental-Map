@@ -3864,16 +3864,21 @@ export default function WhatsTherapy() {
   // already does for the Filter panel.
   useEffect(() => {
     if (appMode === "myMap") {
+      // Reinitialize animator from the map's own overlay positions before
+      // applying the filter — this clears any explore-dragged positions that
+      // were left in animator.current/targets, so they never bleed into myMap.
+      animator.init(NODES, NODE_SIZES, (id) => getNodePos(id));
       filterIdsRef.current = myMapIds;
       setFilterIds(myMapIds);
-      applyFilterAnimation(myMapIds, true); // exactOnly — a built map shows exactly its chosen nodes, no neighbor expansion
+      applyFilterAnimation(myMapIds, true);
     } else if (appMode === "explore") {
+      // Reinitialize with explore overlay positions when returning to explore,
+      // so myMap drags don't bleed back the other way either.
+      animator.init(NODES, NODE_SIZES, (id) => getNodePos(id));
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
     }
-    // landing/questionnaire modes don't touch the canvas filter state at all —
-    // the canvas isn't even rendered while those modes are active.
   }, [appMode, myMapIds, applyFilterAnimation]);
 
   // ── My Maps (plural): the gallery list ─────────────────────────────────────
