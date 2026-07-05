@@ -3864,13 +3864,10 @@ export default function WhatsTherapy() {
   // already does for the Filter panel.
   useEffect(() => {
     if (appMode === "myMap") {
-      // Always reinitialize from BASE_POSITIONS for myMap — never from the
-      // explore overlay. This is the hard guarantee that explore drags can
-      // never bleed into any myMap under any timing condition.
-      // Map-specific drag overrides are applied on top by getNodePos at
-      // render/animation time once the map is active.
+      // Use currentProcessId directly from state (not the ref) — the ref update
+      // is scheduled by its own effect and may not have run yet when this fires.
       animator.init(NODES, NODE_SIZES, (id) => {
-        const pid = currentProcessIdRef.current;
+        const pid = currentProcessId;
         return (pid && positionOverlayRef.current.maps[pid]?.[id])
           ? positionOverlayRef.current.maps[pid][id]
           : BASE_POSITIONS[id] || { x: 0, y: 0 };
@@ -3879,13 +3876,12 @@ export default function WhatsTherapy() {
       setFilterIds(myMapIds);
       applyFilterAnimation(myMapIds, true);
     } else if (appMode === "explore") {
-      // Reinitialize with explore overlay so myMap drags don't bleed back.
       animator.init(NODES, NODE_SIZES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
     }
-  }, [appMode, myMapIds, applyFilterAnimation]);
+  }, [appMode, currentProcessId, myMapIds, applyFilterAnimation]);
 
   // ── My Maps (plural): the gallery list ─────────────────────────────────────
   // processes holds every map this person owns, for the My Maps dropdown.
