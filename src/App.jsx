@@ -2836,18 +2836,12 @@ const RADIUS_LOOKUP = NODE_SIZES;
 // The hand-placed coordinates in NODES can overlap (e.g. two challenge nodes
 // originally only 50px apart with 26px+ radii). Resolve that once at module
 // load so the *passive*, nothing-selected map never shows overlapping nodes.
-// BASE_POSITIONS is intentionally never mutated after init.
-// Per-mode drag overrides live in positionOverlayRef inside the component.
 const BASE_POSITIONS = (() => {
   const positions = {};
   NODES.forEach(n => { positions[n.id] = { x: n.x, y: n.y }; });
   resolveCollisions(positions, NODES, null, { gap: 24 });
   return positions;
 })();
-
-// Module-level basePos — used by pure layout functions before the component
-// mounts. Inside the component, calls go through a overlay-aware version
-// stored in basePosRef that checks per-mode drag overrides first.
 function basePos(id) {
   return BASE_POSITIONS[id] || { x: 0, y: 0 };
 }
@@ -2900,31 +2894,27 @@ export default function WhatsTherapy() {
 
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
-  // Shape: { explore: { [nodeId]: {x,y} }, maps: { [processId]: { [nodeId]: {x,y} } } }
-  // Explore overlay is session-only (cleared on page refresh automatically).
-  // My Map overlays persist to Supabase via a save effect below.
+  // Both appMode and currentProcessId are stored as refs here so the drag
+  // handlers (memoized with empty deps) can read the latest values without
+  // stale closure issues — avoiding the "cannot access before init" crash
+  // that useCallback+ref ordering caused when minified by Vite.
   const positionOverlayRef = useRef({ explore: {}, maps: {} });
-
-  // Declared before getNodePos so the callback can reference it safely.
+  const appModeRef = useRef("landing");
   const currentProcessIdRef = useRef(null);
 
-  // Returns the effective position for a node in the current mode —
-  // overlay first, then canonical BASE_POSITIONS. Used everywhere inside
-  // the component instead of the module-level basePos().
-  const getNodePos = useCallback((id) => {
-    const overlay = positionOverlayRef.current;
-    if (appMode === "myMap" && currentProcessIdRef.current) {
-      const mapOverlay = overlay.maps[currentProcessIdRef.current];
-      if (mapOverlay?.[id]) return mapOverlay[id];
-    } else if (appMode === "explore") {
-      if (overlay.explore[id]) return overlay.explore[id];
-    }
-    return BASE_POSITIONS[id] || { x: 0, y: 0 };
-  }, [appMode]);
+  // Keep refs in sync with state
+  useEffect(() => { appModeRef.current = appMode; }, [appMode]);
 
-  // Stable ref so drag handlers (memoized once) always call the latest version
-  const getNodePosRef = useRef(getNodePos);
-  useEffect(() => { getNodePosRef.current = getNodePos; }, [getNodePos]);
+  // Reads the effective position for a node — overlay first, BASE_POSITIONS fallback.
+  // Plain function (not useCallback) so it's always fresh with no closure concerns.
+  function getNodePos(id) {
+    const overlay = positionOverlayRef.current;
+    const mode = appModeRef.current;
+    const pid = currentProcessIdRef.current;
+    if (mode === "myMap" && pid && overlay.maps[pid]?.[id]) return overlay.maps[pid][id];
+    if (mode === "explore" && overlay.explore[id]) return overlay.explore[id];
+    return BASE_POSITIONS[id] || { x: 0, y: 0 };
+  }
 
   // ── Long-press add/remove popup (Stage 3) ──────────────────────────────────
   // longPressPopup is null when nothing's showing, or
@@ -3528,22 +3518,17 @@ export default function WhatsTherapy() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (drag && drag.moved) {
-        // Write the new position into the per-mode overlay — never BASE_POSITIONS.
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
-        const overlay = positionOverlayRef.current;
         const pid = currentProcessIdRef.current;
         if (pid) {
-          if (!overlay.maps[pid]) overlay.maps[pid] = {};
-          overlay.maps[pid][drag.id] = newPos;
+          if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
+          positionOverlayRef.current.maps[pid][drag.id] = newPos;
         } else {
-          overlay.explore[drag.id] = newPos;
+          positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
-        // Treated as a normal click, not a drag or a hold — always call the LATEST selectNode via ref
         selectNodeRef.current && selectNodeRef.current(drag.id);
       }
-      // If longPressed, the long-press popup is already showing — the
-      // release itself does nothing further (no select/deselect).
       dragNodeRef.current = null;
     };
     window.addEventListener("mousemove", onMove);
@@ -3594,19 +3579,15 @@ export default function WhatsTherapy() {
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onEnd);
       if (drag && drag.moved) {
-        // Write the new position into the per-mode overlay — never BASE_POSITIONS.
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
-        const overlay = positionOverlayRef.current;
         const pid = currentProcessIdRef.current;
         if (pid) {
-          if (!overlay.maps[pid]) overlay.maps[pid] = {};
-          overlay.maps[pid][drag.id] = newPos;
+          if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
+          positionOverlayRef.current.maps[pid][drag.id] = newPos;
         } else {
-          overlay.explore[drag.id] = newPos;
+          positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
-        // Always call the LATEST selectNode via ref — fixes deselect-by-tap on mobile,
-        // which was calling a stale first-render closure that could silently no-op.
         selectNodeRef.current && selectNodeRef.current(drag.id);
       }
       dragNodeRef.current = null;
@@ -3695,8 +3676,8 @@ export default function WhatsTherapy() {
       NODES.forEach(n => {
         resize[n.id] = {
           radius: clusterSizes[n.id],
-          x: gatheredPos[n.id]?.x ?? getNodePosRef.current(n.id).x,
-          y: gatheredPos[n.id]?.y ?? getNodePosRef.current(n.id).y,
+          x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
         };
       });
       animator.setTargets(resize);
@@ -3734,7 +3715,7 @@ export default function WhatsTherapy() {
       // filtering doesn't touch single-node selection state at all.
       const reset = {};
       NODES.forEach(n => {
-        const p = getNodePosRef.current(n.id);
+        const p = getNodePos(n.id);
         reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
       });
       animator.setTargets(reset);
@@ -3768,14 +3749,14 @@ export default function WhatsTherapy() {
         ? Object.fromEntries(NODES.map(n => [n.id, cluster.has(n.id) ? (NODE_SIZES[n.id] ?? 22) : (DEGREE_RANGES[n.type]?.min ?? 14)]))
         : computeMultiClusterSizes(idsSet, NODES, EDGES, DEGREE_RANGES);
       const gatheredPos  = exactOnly
-        ? Object.fromEntries(NODES.map(n => [n.id, getNodePosRef.current(n.id)]))
+        ? Object.fromEntries(NODES.map(n => [n.id, getNodePos(n.id)]))
         : computeMultiGatheredPositions(idsSet, NODES, EDGES);
       const resize = {};
       NODES.forEach(n => {
         resize[n.id] = {
           radius: clusterSizes[n.id],
-          x: gatheredPos[n.id]?.x ?? getNodePosRef.current(n.id).x,
-          y: gatheredPos[n.id]?.y ?? getNodePosRef.current(n.id).y,
+          x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
         };
       });
       animator.setTargets(resize);
@@ -3812,7 +3793,7 @@ export default function WhatsTherapy() {
     // Reset all nodes to base state including per-mode overlay positions
     const reset = {};
     NODES.forEach(n => {
-      const p = getNodePosRef.current(n.id);
+      const p = getNodePos(n.id);
       reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
     });
     animator.setTargets(reset);
@@ -3895,13 +3876,6 @@ export default function WhatsTherapy() {
     // the canvas isn't even rendered while those modes are active.
   }, [appMode, myMapIds, applyFilterAnimation]);
 
-  // When the active map changes (switching between My Maps or to/from Explore),
-  // reinitialize the animator with the correct overlay positions for the new
-  // context so nodes appear where they were left in that mode/map.
-  useEffect(() => {
-    animator.init(NODES, NODE_SIZES, (id) => getNodePosRef.current(id));
-  }, [appMode, currentProcessId]);
-
   // ── My Maps (plural): the gallery list ─────────────────────────────────────
   // processes holds every map this person owns, for the My Maps dropdown.
   // currentProcessId tracks which one is open on the canvas — null means
@@ -3911,7 +3885,6 @@ export default function WhatsTherapy() {
   const [currentProcessId, setCurrentProcessId] = useState(null);
   const [processesLoaded, setProcessesLoaded] = useState(false);
 
-  // Keep ref in sync so getNodePos always sees the latest process id
   useEffect(() => { currentProcessIdRef.current = currentProcessId; }, [currentProcessId]);
 
   const refreshProcessList = useCallback(async (userId) => {
@@ -4031,8 +4004,6 @@ export default function WhatsTherapy() {
         .delete()
         .eq("process_id", currentProcessId);
       if (delErr) { console.error("Failed to clear old steps:", delErr.message); return; }
-      // Sort by saved step order if available, otherwise preserve Set insertion order.
-      // This ensures drag-reordered steps don't silently revert their sequence on save.
       const orderedIds = [...myMapIds].sort((a, b) => {
         const posA = myMapStepOrder[a] ?? Infinity;
         const posB = myMapStepOrder[b] ?? Infinity;
@@ -4600,8 +4571,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const op   = isBuilder ? (builderSelected ? 1 : 0.32) : (anim?.opacity ?? 1);
               const glow = isBuilder ? (builderSelected ? 0.7 : 0) : (anim?.glow ?? 0);
               const pulse = isBuilder ? 0 : (anim?.pulse ?? 0);
-              const nx   = isBuilder ? basePos(n.id).x : (anim?.x ?? basePos(n.id).x);
-              const ny   = isBuilder ? basePos(n.id).y : (anim?.y ?? basePos(n.id).y);
+              const nx   = isBuilder ? getNodePos(n.id).x : (anim?.x ?? getNodePos(n.id).x);
+              const ny   = isBuilder ? getNodePos(n.id).y : (anim?.y ?? getNodePos(n.id).y);
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
