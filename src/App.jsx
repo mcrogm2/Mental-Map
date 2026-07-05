@@ -3864,17 +3864,23 @@ export default function WhatsTherapy() {
   // already does for the Filter panel.
   useEffect(() => {
     if (appMode === "myMap") {
-      // Reinitialize animator from the map's own overlay positions before
-      // applying the filter — this clears any explore-dragged positions that
-      // were left in animator.current/targets, so they never bleed into myMap.
-      animator.init(NODES, NODE_SIZES, (id) => getNodePos(id));
+      // Always reinitialize from BASE_POSITIONS for myMap — never from the
+      // explore overlay. This is the hard guarantee that explore drags can
+      // never bleed into any myMap under any timing condition.
+      // Map-specific drag overrides are applied on top by getNodePos at
+      // render/animation time once the map is active.
+      animator.init(NODES, NODE_SIZES, (id) => {
+        const pid = currentProcessIdRef.current;
+        return (pid && positionOverlayRef.current.maps[pid]?.[id])
+          ? positionOverlayRef.current.maps[pid][id]
+          : BASE_POSITIONS[id] || { x: 0, y: 0 };
+      });
       filterIdsRef.current = myMapIds;
       setFilterIds(myMapIds);
       applyFilterAnimation(myMapIds, true);
     } else if (appMode === "explore") {
-      // Reinitialize with explore overlay positions when returning to explore,
-      // so myMap drags don't bleed back the other way either.
-      animator.init(NODES, NODE_SIZES, (id) => getNodePos(id));
+      // Reinitialize with explore overlay so myMap drags don't bleed back.
+      animator.init(NODES, NODE_SIZES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
