@@ -2836,14 +2836,14 @@ const RADIUS_LOOKUP = NODE_SIZES;
 // The hand-placed coordinates in NODES can overlap (e.g. two challenge nodes
 // originally only 50px apart with 26px+ radii). Resolve that once at module
 // load so the *passive*, nothing-selected map never shows overlapping nodes.
-// BASE_POSITIONS is intentionally frozen — never mutated after init.
+// BASE_POSITIONS is intentionally never mutated after init.
 // Per-mode drag overrides live in positionOverlayRef inside the component.
-const BASE_POSITIONS = Object.freeze((() => {
+const BASE_POSITIONS = (() => {
   const positions = {};
   NODES.forEach(n => { positions[n.id] = { x: n.x, y: n.y }; });
   resolveCollisions(positions, NODES, null, { gap: 24 });
   return positions;
-})());
+})();
 
 // Module-level basePos — used by pure layout functions before the component
 // mounts. Inside the component, calls go through a overlay-aware version
@@ -2905,6 +2905,9 @@ export default function WhatsTherapy() {
   // My Map overlays persist to Supabase via a save effect below.
   const positionOverlayRef = useRef({ explore: {}, maps: {} });
 
+  // Declared before getNodePos so the callback can reference it safely.
+  const currentProcessIdRef = useRef(null);
+
   // Returns the effective position for a node in the current mode —
   // overlay first, then canonical BASE_POSITIONS. Used everywhere inside
   // the component instead of the module-level basePos().
@@ -2922,10 +2925,6 @@ export default function WhatsTherapy() {
   // Stable ref so drag handlers (memoized once) always call the latest version
   const getNodePosRef = useRef(getNodePos);
   useEffect(() => { getNodePosRef.current = getNodePos; }, [getNodePos]);
-
-  // currentProcessId isn't in scope yet when getNodePos is defined above,
-  // so we track it in a ref that's always current.
-  const currentProcessIdRef = useRef(null);
 
   // ── Long-press add/remove popup (Stage 3) ──────────────────────────────────
   // longPressPopup is null when nothing's showing, or
