@@ -33,9 +33,8 @@ class NodeAnimator {
       this.current[n.id]  = { opacity:1, radius:r, glow:0, pulse:0, x:p.x, y:p.y };
     });
   }
-  // Hard-resets x/y in BOTH current and targets for every node using the
-  // provided position getter. Call this when switching modes so the animator
-  // never springs from stale positions left over from a previous mode.
+  // Hard-resets x/y in both current and targets. Call when switching modes
+  // so the animator never springs from stale positions from a previous mode.
   resetPositions(nodes, getPos) {
     nodes.forEach(n => {
       const p = getPos(n.id);
@@ -2880,10 +2879,32 @@ function getInitialViewBox() {
 const INITIAL_VIEWBOX = getInitialViewBox();
 
 // Singleton animator — lives outside React
+// ── Per-mode position overlay ────────────────────────────────────────────────
+// Module-level so it's never subject to React component const hoisting or
+// Vite minifier "cannot access before init" errors. Stores drag overrides
+// per mode/map. Explore overlay is session-only; map overlays persist until
+// saved to Supabase. Shape: { explore: {nodeId: {x,y}}, maps: {pid: {nodeId: {x,y}}} }
+const positionOverlay = { explore: {}, maps: {} };
+
+// Returns the right x/y for a node given current mode and process.
+// Called by drag handlers and the mode-switch effect — always reads live values.
+function getOverlayPos(nodeId, mode, processId) {
+  if (mode === "myMap" && processId && positionOverlay.maps[processId]?.[nodeId])
+    return positionOverlay.maps[processId][nodeId];
+  if (mode === "explore" && positionOverlay.explore[nodeId])
+    return positionOverlay.explore[nodeId];
+  return BASE_POSITIONS[nodeId] || { x: 0, y: 0 };
+}
+
 const animator = new NodeAnimator();
 const edgeWave = new EdgeWaveAnimator();
 
 // ── Main ───────────────────────────────────────────────────────────────────────
+// Module-level ref so drag handlers (memoized with useCallback) can always
+// read the current process id without stale closures or component-level
+// const hoisting issues that cause Vite "cannot access before init" crashes.
+const currentProcessId_ref = { current: null };
+
 export default function WhatsTherapy() {
   const [selected, setSelected]   = useState(null);
   const [filterIds, setFilterIds] = useState(() => new Set()); // node ids selected in the Filter panel
@@ -2901,30 +2922,6 @@ export default function WhatsTherapy() {
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-
-  // ── Per-mode position overlay ──────────────────────────────────────────────
-  // Stores drag overrides per mode/map so positions never bleed across contexts.
-  // Both appMode and currentProcessId are stored as refs here so the drag
-  // handlers (memoized with empty deps) can read the latest values without
-  // stale closure issues — avoiding the "cannot access before init" crash
-  // that useCallback+ref ordering caused when minified by Vite.
-  const positionOverlayRef = useRef({ explore: {}, maps: {} });
-  const appModeRef = useRef("landing");
-  const currentProcessIdRef = useRef(null);
-
-  // Keep refs in sync with state
-  useEffect(() => { appModeRef.current = appMode; }, [appMode]);
-
-  // Reads the effective position for a node — overlay first, BASE_POSITIONS fallback.
-  // Plain function (not useCallback) so it's always fresh with no closure concerns.
-  function getNodePos(id) {
-    const overlay = positionOverlayRef.current;
-    const mode = appModeRef.current;
-    const pid = currentProcessIdRef.current;
-    if (mode === "myMap" && pid && overlay.maps[pid]?.[id]) return overlay.maps[pid][id];
-    if (mode === "explore" && overlay.explore[id]) return overlay.explore[id];
-    return BASE_POSITIONS[id] || { x: 0, y: 0 };
-  }
 
   // ── Long-press add/remove popup (Stage 3) ──────────────────────────────────
   // longPressPopup is null when nothing's showing, or
@@ -3529,16 +3526,19 @@ export default function WhatsTherapy() {
       window.removeEventListener("mouseup", onUp);
       if (drag && drag.moved) {
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
-        const pid = currentProcessIdRef.current;
+        const pid = currentProcessId_ref.current;
         if (pid) {
-          if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
-          positionOverlayRef.current.maps[pid][drag.id] = newPos;
+          if (!positionOverlay.maps[pid]) positionOverlay.maps[pid] = {};
+          positionOverlay.maps[pid][drag.id] = newPos;
         } else {
-          positionOverlayRef.current.explore[drag.id] = newPos;
+          positionOverlay.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
+        // Treated as a normal click, not a drag or a hold — always call the LATEST selectNode via ref
         selectNodeRef.current && selectNodeRef.current(drag.id);
       }
+      // If longPressed, the long-press popup is already showing — the
+      // release itself does nothing further (no select/deselect).
       dragNodeRef.current = null;
     };
     window.addEventListener("mousemove", onMove);
@@ -3590,14 +3590,16 @@ export default function WhatsTherapy() {
       window.removeEventListener("touchend", onEnd);
       if (drag && drag.moved) {
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
-        const pid = currentProcessIdRef.current;
+        const pid = currentProcessId_ref.current;
         if (pid) {
-          if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
-          positionOverlayRef.current.maps[pid][drag.id] = newPos;
+          if (!positionOverlay.maps[pid]) positionOverlay.maps[pid] = {};
+          positionOverlay.maps[pid][drag.id] = newPos;
         } else {
-          positionOverlayRef.current.explore[drag.id] = newPos;
+          positionOverlay.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
+        // Always call the LATEST selectNode via ref — fixes deselect-by-tap on mobile,
+        // which was calling a stale first-render closure that could silently no-op.
         selectNodeRef.current && selectNodeRef.current(drag.id);
       }
       dragNodeRef.current = null;
@@ -3686,8 +3688,8 @@ export default function WhatsTherapy() {
       NODES.forEach(n => {
         resize[n.id] = {
           radius: clusterSizes[n.id],
-          x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
-          y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
+          x: gatheredPos[n.id]?.x ?? basePos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? basePos(n.id).y,
         };
       });
       animator.setTargets(resize);
@@ -3725,7 +3727,7 @@ export default function WhatsTherapy() {
       // filtering doesn't touch single-node selection state at all.
       const reset = {};
       NODES.forEach(n => {
-        const p = getNodePos(n.id);
+        const p = basePos(n.id);
         reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
       });
       animator.setTargets(reset);
@@ -3759,14 +3761,14 @@ export default function WhatsTherapy() {
         ? Object.fromEntries(NODES.map(n => [n.id, cluster.has(n.id) ? (NODE_SIZES[n.id] ?? 22) : (DEGREE_RANGES[n.type]?.min ?? 14)]))
         : computeMultiClusterSizes(idsSet, NODES, EDGES, DEGREE_RANGES);
       const gatheredPos  = exactOnly
-        ? Object.fromEntries(NODES.map(n => [n.id, getNodePos(n.id)]))
+        ? Object.fromEntries(NODES.map(n => [n.id, basePos(n.id)]))
         : computeMultiGatheredPositions(idsSet, NODES, EDGES);
       const resize = {};
       NODES.forEach(n => {
         resize[n.id] = {
           radius: clusterSizes[n.id],
-          x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
-          y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
+          x: gatheredPos[n.id]?.x ?? basePos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? basePos(n.id).y,
         };
       });
       animator.setTargets(resize);
@@ -3800,10 +3802,10 @@ export default function WhatsTherapy() {
       return;
     }
 
-    // Reset all nodes to base state including per-mode overlay positions
+    // Reset all nodes to base state including original positions
     const reset = {};
     NODES.forEach(n => {
-      const p = getNodePos(n.id);
+      const p = basePos(n.id);
       reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
     });
     animator.setTargets(reset);
@@ -3874,19 +3876,15 @@ export default function WhatsTherapy() {
   // already does for the Filter panel.
   useEffect(() => {
     if (appMode === "myMap") {
-      // Hard-reset both current AND targets to myMap positions before animating —
-      // this prevents the animator from springing from explore-dragged coordinates.
-      animator.resetPositions(NODES, (id) => {
-        return (currentProcessId && positionOverlayRef.current.maps[currentProcessId]?.[id])
-          ? positionOverlayRef.current.maps[currentProcessId][id]
-          : BASE_POSITIONS[id] || { x: 0, y: 0 };
-      });
+      // Hard-reset both current AND targets to myMap-specific positions before
+      // animating — prevents explore-dragged positions springing into myMap view.
+      animator.resetPositions(NODES, (id) => getOverlayPos(id, "myMap", currentProcessId));
       filterIdsRef.current = myMapIds;
       setFilterIds(myMapIds);
       applyFilterAnimation(myMapIds, true);
     } else if (appMode === "explore") {
-      // Hard-reset to explore overlay positions so myMap drags don't bleed back.
-      animator.resetPositions(NODES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
+      // Reset to explore overlay so myMap drags don't bleed back either.
+      animator.resetPositions(NODES, (id) => getOverlayPos(id, "explore", null));
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
@@ -3902,7 +3900,12 @@ export default function WhatsTherapy() {
   const [currentProcessId, setCurrentProcessId] = useState(null);
   const [processesLoaded, setProcessesLoaded] = useState(false);
 
-  useEffect(() => { currentProcessIdRef.current = currentProcessId; }, [currentProcessId]);
+  // Keep module-level refs in sync with state so drag handlers always see current values
+  const appModeRef = useRef("landing");
+  useEffect(() => {
+    appModeRef.current = appMode;
+    currentProcessId_ref.current = currentProcessId;
+  }, [appMode, currentProcessId]);
 
   const refreshProcessList = useCallback(async (userId) => {
     const { data, error } = await supabase
@@ -4008,9 +4011,9 @@ export default function WhatsTherapy() {
   }, [session, currentProcessId]);
 
   // ── My Maps: save steps for whichever process is currently open ────────────
-  // Debounced. Replaces ALL of the open process's steps on every save,
-  // preserving step order (from myMapStepOrder) and per-step notes
-  // (from myMapStepNotes) so comments survive map switches and manual saves.
+  // Debounced, same pattern as before. Replaces ALL of the open process's
+  // steps with the current myMapIds on every save — simplest correct
+  // approach while step order/per-step text isn't exposed yet (A3).
   const myMapSaveTimerRef = useRef(null);
   useEffect(() => {
     if (!session || !myMapLoaded || !currentProcessId) return;
@@ -4588,8 +4591,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               const op   = isBuilder ? (builderSelected ? 1 : 0.32) : (anim?.opacity ?? 1);
               const glow = isBuilder ? (builderSelected ? 0.7 : 0) : (anim?.glow ?? 0);
               const pulse = isBuilder ? 0 : (anim?.pulse ?? 0);
-              const nx   = isBuilder ? getNodePos(n.id).x : (anim?.x ?? getNodePos(n.id).x);
-              const ny   = isBuilder ? getNodePos(n.id).y : (anim?.y ?? getNodePos(n.id).y);
+              const nx   = isBuilder ? basePos(n.id).x : (anim?.x ?? basePos(n.id).x);
+              const ny   = isBuilder ? basePos(n.id).y : (anim?.y ?? basePos(n.id).y);
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
