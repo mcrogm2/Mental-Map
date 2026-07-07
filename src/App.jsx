@@ -2622,7 +2622,7 @@ function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDel
                     </button>
                     <button onClick={()=>{ onCopy(p.id, p.title); setOpen(false); }} aria-label="Copy map"
                       title="Copy map"
-                      style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:4}}>⎘</button>
+                      style={{background:"none",border:"none",color:"#7F77DD",cursor:"pointer",fontSize:11,fontWeight:600,padding:"2px 5px",borderRadius:4,whiteSpace:"nowrap"}}>copy</button>
                     <button onClick={()=>startRename(p)} aria-label="Rename"
                       style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:4}}>✎</button>
                     <button onClick={()=>setConfirmDeleteId(p.id)} aria-label="Delete"
