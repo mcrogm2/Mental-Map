@@ -2126,7 +2126,7 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
 // is simulated by whether a My Map node set already exists in memory — real
 // auth replaces this check in a later stage without changing this component's
 // props/shape.
-function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
+function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps }) {
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
       <div>
@@ -2136,30 +2136,33 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
         </div>
       </div>
 
-      <div style={{display:"flex",gap:12,justifyContent:"center",width:"100%",maxWidth:440,padding:"0 4px"}}>
-        <button onClick={onChooseExplore}
-          style={{
-            background:"#11142A",border:"1px solid #232752",borderRadius:16,
-            padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
-            flex:"1 1 0",minWidth:0,maxWidth:220,textAlign:"left",
-          }}>
-          <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>Explore</div>
-          <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
-            Browse the full map of therapy modalities, concepts, challenges, and skills.
-          </div>
-        </button>
+      <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%",maxWidth:440,padding:"0 4px"}}>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onChooseExplore}
+            style={{background:"#11142A",border:"1px solid #232752",borderRadius:16,padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",flex:"1 1 0",minWidth:0,textAlign:"left"}}>
+            <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>Explore</div>
+            <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
+              Browse the full map of therapy modalities, concepts, challenges, and skills.
+            </div>
+          </button>
 
-        <button onClick={onChooseMyMap}
-          style={{
-            background:"rgba(127,119,221,0.12)",border:"1px solid #7F77DD",borderRadius:16,
-            padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",
-            flex:"1 1 0",minWidth:0,maxWidth:220,textAlign:"left",
-          }}>
-          <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>My Maps</div>
-          <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
-            {hasMyMap
-              ? "Pick up your personalized map where you left off."
-              : "Answer a couple of quick questions to build a map just for you."}
+          <button onClick={onChooseMyMap}
+            style={{background:"rgba(127,119,221,0.12)",border:"1px solid #7F77DD",borderRadius:16,padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",flex:"1 1 0",minWidth:0,textAlign:"left"}}>
+            <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>My Maps</div>
+            <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
+              {hasMyMap ? "Pick up your personalized map where you left off." : "Answer a couple of quick questions to build a map just for you."}
+            </div>
+          </button>
+        </div>
+
+        <button onClick={onChooseAuthorMaps}
+          style={{background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:16,padding:"16px 18px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",width:"100%",textAlign:"left",display:"flex",alignItems:"center",gap:14}}>
+          <div style={{fontSize:22}}>✦</div>
+          <div>
+            <div style={{fontSize:15,fontWeight:600,marginBottom:3}}>Author's Maps</div>
+            <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
+              Curated maps from the What's Therapy team — ready to explore or copy as your own.
+            </div>
           </div>
         </button>
       </div>
@@ -2167,7 +2170,186 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap }) {
   );
 }
 
-// ── My Map: questionnaire ───────────────────────────────────────────────────
+// ── Author's Maps: list + viewer screen ────────────────────────────────────
+function AuthorMapsScreen({ onBack, onCopy, isAuthor, session }) {
+  const [maps, setMaps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null); // { map, steps }
+  const [copying, setCopying] = useState(false);
+
+  // New map form (author only)
+  const [creating, setCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("author_maps")
+        .select("id, title, created_at")
+        .order("title");
+      if (!error) setMaps(data || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const filtered = maps.filter(m =>
+    m.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openMap = async (map) => {
+    const { data: steps } = await supabase
+      .from("author_map_steps")
+      .select("node_id, position, step_summary")
+      .eq("map_id", map.id)
+      .order("position");
+    setSelected({ map, steps: steps || [] });
+  };
+
+  const handleCopy = async () => {
+    if (!session) return;
+    setCopying(true);
+    await onCopy(selected.map.id, selected.map.title, selected.steps);
+    setCopying(false);
+    setSelected(null);
+  };
+
+  const handleCreate = async () => {
+    if (!newTitle.trim() || !session) return;
+    setSaving(true);
+    const { data, error } = await supabase
+      .from("author_maps")
+      .insert({ user_id: session.user.id, title: newTitle.trim() })
+      .select("id, title, created_at")
+      .single();
+    if (!error && data) {
+      setMaps(prev => [...prev, data].sort((a, b) => a.title.localeCompare(b.title)));
+      setNewTitle("");
+      setCreating(false);
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (mapId) => {
+    await supabase.from("author_maps").delete().eq("id", mapId);
+    setMaps(prev => prev.filter(m => m.id !== mapId));
+    if (selected?.map.id === mapId) setSelected(null);
+  };
+
+  // ── Viewer ──────────────────────────────────────────────────────────────────
+  if (selected) {
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <button onClick={()=>setSelected(null)}
+            style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
+            ← Back
+          </button>
+          <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>{selected.map.title}</span>
+          {session && (
+            <button onClick={handleCopy} disabled={copying}
+              style={{background:"rgba(127,119,221,0.15)",border:"1px solid #7F77DD",borderRadius:20,color:"#a5b4fc",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",opacity:copying?0.6:1}}>
+              {copying ? "Copying…" : "⎘ Copy to My Maps"}
+            </button>
+          )}
+        </div>
+
+        {selected.steps.length === 0 ? (
+          <div style={{color:"#64748b",fontSize:13}}>No steps in this map yet.</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {selected.steps.map((s, i) => {
+              const node = (typeof NODES !== "undefined" ? NODES : []).find(n => n.id === s.node_id);
+              return (
+                <div key={s.node_id} style={{background:"#11142A",border:"1px solid #232752",borderRadius:12,padding:"12px 14px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:s.step_summary?6:0}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#7F77DD",minWidth:20}}>#{i+1}</span>
+                    <span style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{node?.label?.replace("\n"," ") || s.node_id}</span>
+                  </div>
+                  {s.step_summary && (
+                    <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.55,marginLeft:28}}>{s.step_summary}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {isAuthor && (
+          <div style={{marginTop:24,paddingTop:16,borderTop:"1px solid #232752"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#7F77DD",letterSpacing:1,marginBottom:8}}>AUTHOR TOOLS</div>
+            <button onClick={()=>handleDelete(selected.map.id)}
+              style={{background:"none",border:"1px solid #fb7185",borderRadius:8,color:"#fb7185",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+              Delete this map
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── List ────────────────────────────────────────────────────────────────────
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button onClick={onBack}
+          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
+          ← Back
+        </button>
+        <span style={{fontSize:17,fontWeight:700,color:"#f1f5f9",flex:1}}>✦ Author's Maps</span>
+        {isAuthor && (
+          <button onClick={()=>setCreating(c=>!c)}
+            style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+            + New map
+          </button>
+        )}
+      </div>
+
+      {isAuthor && creating && (
+        <div style={{background:"#11142A",border:"1px solid rgba(251,191,36,0.3)",borderRadius:12,padding:"12px 14px",marginBottom:14,display:"flex",gap:8}}>
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={e=>setNewTitle(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter") handleCreate(); if(e.key==="Escape") setCreating(false); }}
+            placeholder="Map title…"
+            style={{flex:1,background:"none",border:"none",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none"}}
+          />
+          <button onClick={handleCreate} disabled={saving||!newTitle.trim()}
+            style={{background:"#fbbf24",border:"none",borderRadius:8,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.6:1}}>
+            {saving?"Saving…":"Save"}
+          </button>
+        </div>
+      )}
+
+      <input
+        value={search}
+        onChange={e=>setSearch(e.target.value)}
+        placeholder="Search maps…"
+        style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:10,color:"#e2e8f0",fontSize:13,padding:"9px 12px",fontFamily:"inherit",marginBottom:14,boxSizing:"border-box",outline:"none"}}
+      />
+
+      {loading ? (
+        <div style={{color:"#64748b",fontSize:13}}>Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{color:"#64748b",fontSize:13}}>{search ? "No maps match your search." : "No author maps yet."}</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(m => (
+            <button key={m.id} onClick={()=>openMap(m)}
+              style={{background:"#11142A",border:"1px solid #232752",borderRadius:12,padding:"13px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:14,color:"rgba(251,191,36,0.7)"}}>✦</span>
+              <span style={{fontSize:13,fontWeight:600,flex:1}}>{m.title}</span>
+              <span style={{fontSize:11,color:"#475569"}}>→</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 // Two steps, each a MultiSelectSearch scoped to different node types. Submits
 // the union of both steps' selections as the seed set for the generated map —
 // the SAME seed-set shape the Filter feature already consumes downstream
@@ -2890,10 +3072,11 @@ export default function WhatsTherapy() {
   // is true only during the brief initial check for an existing session, so
   // the landing screen doesn't flash before we know someone's already signed
   // in (e.g. returning in the same browser later that day).
-  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap"
+  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps"
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthor, setIsAuthor] = useState(false);
 
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
@@ -2972,12 +3155,10 @@ export default function WhatsTherapy() {
       setSession(session);
       setAuthLoading(false);
       lastUserIdRef.current = session?.user?.id ?? null;
-      // A session already present on first load AND a URL that still has
-      // the auth redirect params means this load IS the magic-link return —
-      // skip the landing screen. Don't jump straight to "myMap" here — we
-      // don't yet know if this person has a saved map or needs the
-      // questionnaire. The load-on-sign-in effect below makes that call
-      // once it actually knows, via the "loadingMyMap" transitional state.
+      if (session?.user?.id) {
+        supabase.from("user_profiles").select("is_author").eq("id", session.user.id).single()
+          .then(({ data }) => { if (data?.is_author) setIsAuthor(true); });
+      }
       if (session && window.location.hash.includes("access_token")) {
         setAppMode("loadingMyMap");
       }
@@ -2989,14 +3170,16 @@ export default function WhatsTherapy() {
         const newUserId = newSession?.user?.id ?? null;
         const isActuallyNewSignIn = newUserId !== lastUserIdRef.current;
         lastUserIdRef.current = newUserId;
+        if (newUserId) {
+          supabase.from("user_profiles").select("is_author").eq("id", newUserId).single()
+            .then(({ data }) => { setIsAuthor(!!data?.is_author); });
+        }
         if (isActuallyNewSignIn) {
           setAppMode("loadingMyMap");
         }
-        // Same user re-firing SIGNED_IN: session object is refreshed above,
-        // but appMode is deliberately left untouched — whatever screen/map
-        // the person was already on stays exactly as it was.
       } else if (event === "SIGNED_OUT") {
         lastUserIdRef.current = null;
+        setIsAuthor(false);
         setMyMapIds(new Set());
         setMyMapStepNotes({});
         setMyMapStepOrder({});
@@ -3009,6 +3192,7 @@ export default function WhatsTherapy() {
   }, []);
 
   const handleChooseExplore = () => setAppMode("explore");
+  const handleChooseAuthorMaps = () => setAppMode("authorMaps");
   const handleChooseMyMap = () => {
     if (!session) { setAppMode("signin"); return; }
     setAppMode(processes.length > 0 ? "myMap" : "questionnaire");
@@ -4286,6 +4470,41 @@ export default function WhatsTherapy() {
     setAppMode("myMap");
   }, [session]);
 
+  // ── Copy an Author's Map into the user's My Maps ──────────────────────────
+  const copyFromAuthorMap = useCallback(async (authorMapId, authorMapTitle, steps) => {
+    if (!session) return;
+    const newTitle = `${authorMapTitle || "Untitled map"} (copy)`;
+    const { data: newProcess, error: procErr } = await supabase
+      .from("processes")
+      .insert({ owner_id: session.user.id, title: newTitle })
+      .select("id, title")
+      .single();
+    if (procErr) { console.error("Failed to create copy:", procErr.message); return; }
+    if (steps?.length > 0) {
+      const rows = steps.map(s => ({
+        process_id: newProcess.id,
+        node_id: s.node_id,
+        position: s.position,
+        step_summary: s.step_summary || null,
+      }));
+      await supabase.from("process_steps").insert(rows);
+    }
+    setProcesses(prev => [...prev, newProcess]);
+    locallyKnownProcessIdRef.current = newProcess.id;
+    setCurrentProcessId(newProcess.id);
+    const notes = {};
+    const order = {};
+    (steps || []).forEach(s => {
+      if (s.step_summary) notes[s.node_id] = s.step_summary;
+      order[s.node_id] = s.position;
+    });
+    setMyMapIds(new Set((steps || []).map(s => s.node_id)));
+    setMyMapStepNotes(notes);
+    setMyMapStepOrder(order);
+    setMyMapLoaded(true);
+    setAppMode("myMap");
+  }, [session]);
+
   const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
     if(insightCache.current[selected]) { setInsight(insightCache.current[selected]); setTab("insight"); return; }
@@ -4384,6 +4603,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           hasMyMap={processes.length > 0}
           onChooseExplore={handleChooseExplore}
           onChooseMyMap={handleChooseMyMap}
+          onChooseAuthorMaps={handleChooseAuthorMaps}
         />
       )}
 
@@ -4396,6 +4616,14 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
       {appMode === "signin" && (
         <SignInScreen onCancel={()=>setAppMode("landing")} />
+      )}
+      {appMode === "authorMaps" && (
+        <AuthorMapsScreen
+          onBack={()=>setAppMode("landing")}
+          onCopy={copyFromAuthorMap}
+          isAuthor={isAuthor}
+          session={session}
+        />
       )}
 
       {(appMode === "explore" || appMode === "myMap" || appMode === "builder") && (
