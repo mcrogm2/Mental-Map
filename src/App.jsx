@@ -2572,11 +2572,6 @@ function AuthorMapsScreen({ onBack, onCopy, onView, isAuthor, session }) {
     );
   }
 
-  // ── Viewer ──────────────────────────────────────────────────────────────────
-  if (selected) {
-    return (
-      <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
 // ── My Map: questionnaire ───────────────────────────────────────────────────
 // Two steps, each a MultiSelectSearch scoped to different node types. Submits
 // the union of both steps' selections as the seed set for the generated map —
