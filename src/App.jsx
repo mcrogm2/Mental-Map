@@ -2360,13 +2360,146 @@ function AuthorMapEditor({ map, onBack, session }) {
 }
 
 
-function AuthorMapsScreen({ onBack, onCopy, isAuthor, session }) {
+function AuthorMapsScreen({ onBack, onCopy, onView, isAuthor, session }) {
   const [maps, setMaps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null); // { map, steps } for viewer
-  const [editing, setEditing] = useState(null);   // map object for editor
-  const [copying, setCopying] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("author_maps")
+        .select("id, title, created_at")
+        .order("title");
+      if (!error) setMaps(data || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const filtered = maps.filter(m =>
+    m.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleMapClick = async (map) => {
+    const { data: steps } = await supabase
+      .from("author_map_steps")
+      .select("node_id, position, step_summary")
+      .eq("map_id", map.id)
+      .order("position");
+    onView(map, steps || []);
+  };
+
+  const handleCreate = async () => {
+    if (!newTitle.trim() || !session) return;
+    setSaving(true);
+    const { data, error } = await supabase
+      .from("author_maps")
+      .insert({ user_id: session.user.id, title: newTitle.trim() })
+      .select("id, title, created_at")
+      .single();
+    if (!error && data) {
+      setMaps(prev => [...prev, data].sort((a, b) => a.title.localeCompare(b.title)));
+      setNewTitle("");
+      setCreating(false);
+      setEditing(data); // go straight to editor after creating
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (mapId) => {
+    await supabase.from("author_maps").delete().eq("id", mapId);
+    setMaps(prev => prev.filter(m => m.id !== mapId));
+  };
+
+  // ── Editor ──────────────────────────────────────────────────────────────────
+  if (editing) {
+    return (
+      <AuthorMapEditor
+        map={editing}
+        onBack={() => setEditing(null)}
+        session={session}
+      />
+    );
+  }
+
+  // ── List ────────────────────────────────────────────────────────────────────
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button onClick={onBack}
+          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
+          ← Back
+        </button>
+        <span style={{fontSize:17,fontWeight:700,color:"#f1f5f9",flex:1}}>✦ Author's Maps</span>
+        {isAuthor && (
+          <button onClick={()=>setCreating(c=>!c)}
+            style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+            + New map
+          </button>
+        )}
+      </div>
+
+      {isAuthor && creating && (
+        <div style={{background:"#11142A",border:"1px solid rgba(251,191,36,0.3)",borderRadius:12,padding:"12px 14px",marginBottom:14,display:"flex",gap:8}}>
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={e=>setNewTitle(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter") handleCreate(); if(e.key==="Escape") setCreating(false); }}
+            placeholder="Map title…"
+            style={{flex:1,background:"none",border:"none",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none"}}
+          />
+          <button onClick={handleCreate} disabled={saving||!newTitle.trim()}
+            style={{background:"#fbbf24",border:"none",borderRadius:8,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.6:1}}>
+            {saving?"Saving…":"Save"}
+          </button>
+        </div>
+      )}
+
+      <input
+        value={search}
+        onChange={e=>setSearch(e.target.value)}
+        placeholder="Search maps…"
+        style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:10,color:"#e2e8f0",fontSize:13,padding:"9px 12px",fontFamily:"inherit",marginBottom:14,boxSizing:"border-box",outline:"none"}}
+      />
+
+      {loading ? (
+        <div style={{color:"#64748b",fontSize:13}}>Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{color:"#64748b",fontSize:13}}>{search ? "No maps match your search." : "No author maps yet."}</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(m => (
+            <div key={m.id} style={{background:"#11142A",border:"1px solid #232752",borderRadius:12,padding:"13px 14px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:14,color:"rgba(251,191,36,0.7)"}}>✦</span>
+              <button onClick={()=>handleMapClick(m)}
+                style={{flex:1,textAlign:"left",background:"none",border:"none",color:"#e2e8f0",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0}}>
+                {m.title}
+              </button>
+              {isAuthor && (
+                <>
+                  <button onClick={()=>setEditing(m)}
+                    style={{background:"none",border:"none",color:"#fbbf24",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"2px 6px"}}>
+                    edit
+                  </button>
+                  <button onClick={()=>handleDelete(m.id)}
+                    style={{background:"none",border:"none",color:"#64748b",fontSize:11,cursor:"pointer",fontFamily:"inherit",padding:"2px 4px"}}>
+                    🗑
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
   // New map form (author only)
   const [creating, setCreating] = useState(false);
@@ -2444,119 +2577,7 @@ function AuthorMapsScreen({ onBack, onCopy, isAuthor, session }) {
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-          <button onClick={()=>setSelected(null)}
-            style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
-            ← Back
-          </button>
-          <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>{selected.map.title}</span>
-          {isAuthor && (
-            <button onClick={()=>setEditing(selected.map)}
-              style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
-              ✎ Edit
-            </button>
-          )}
-          {session && (
-            <button onClick={handleCopy} disabled={copying}
-              style={{background:"rgba(127,119,221,0.15)",border:"1px solid #7F77DD",borderRadius:20,color:"#a5b4fc",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",opacity:copying?0.6:1}}>
-              {copying ? "Copying…" : "⎘ Copy to My Maps"}
-            </button>
-          )}
-        </div>
-
-        {selected.steps.length === 0 ? (
-          <div style={{color:"#64748b",fontSize:13}}>No steps in this map yet.</div>
-        ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {selected.steps.map((s, i) => {
-              const node = (typeof NODES !== "undefined" ? NODES : []).find(n => n.id === s.node_id);
-              return (
-                <div key={s.node_id} style={{background:"#11142A",border:"1px solid #232752",borderRadius:12,padding:"12px 14px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:s.step_summary?6:0}}>
-                    <span style={{fontSize:11,fontWeight:700,color:"#7F77DD",minWidth:20}}>#{i+1}</span>
-                    <span style={{fontSize:13,fontWeight:600,color:"#e2e8f0"}}>{node?.label?.replace("\n"," ") || s.node_id}</span>
-                  </div>
-                  {s.step_summary && (
-                    <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.55,marginLeft:28}}>{s.step_summary}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {isAuthor && (
-          <div style={{marginTop:24,paddingTop:16,borderTop:"1px solid #232752"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#7F77DD",letterSpacing:1,marginBottom:8}}>AUTHOR TOOLS</div>
-            <button onClick={()=>handleDelete(selected.map.id)}
-              style={{background:"none",border:"1px solid #fb7185",borderRadius:8,color:"#fb7185",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
-              Delete this map
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── List ────────────────────────────────────────────────────────────────────
-  return (
-    <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-        <button onClick={onBack}
-          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
-          ← Back
-        </button>
-        <span style={{fontSize:17,fontWeight:700,color:"#f1f5f9",flex:1}}>✦ Author's Maps</span>
-        {isAuthor && (
-          <button onClick={()=>setCreating(c=>!c)}
-            style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
-            + New map
-          </button>
-        )}
-      </div>
-
-      {isAuthor && creating && (
-        <div style={{background:"#11142A",border:"1px solid rgba(251,191,36,0.3)",borderRadius:12,padding:"12px 14px",marginBottom:14,display:"flex",gap:8}}>
-          <input
-            autoFocus
-            value={newTitle}
-            onChange={e=>setNewTitle(e.target.value)}
-            onKeyDown={e=>{ if(e.key==="Enter") handleCreate(); if(e.key==="Escape") setCreating(false); }}
-            placeholder="Map title…"
-            style={{flex:1,background:"none",border:"none",color:"#e2e8f0",fontSize:13,fontFamily:"inherit",outline:"none"}}
-          />
-          <button onClick={handleCreate} disabled={saving||!newTitle.trim()}
-            style={{background:"#fbbf24",border:"none",borderRadius:8,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.6:1}}>
-            {saving?"Saving…":"Save"}
-          </button>
-        </div>
-      )}
-
-      <input
-        value={search}
-        onChange={e=>setSearch(e.target.value)}
-        placeholder="Search maps…"
-        style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:10,color:"#e2e8f0",fontSize:13,padding:"9px 12px",fontFamily:"inherit",marginBottom:14,boxSizing:"border-box",outline:"none"}}
-      />
-
-      {loading ? (
-        <div style={{color:"#64748b",fontSize:13}}>Loading…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{color:"#64748b",fontSize:13}}>{search ? "No maps match your search." : "No author maps yet."}</div>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {filtered.map(m => (
-            <button key={m.id} onClick={()=>openMap(m)}
-              style={{background:"#11142A",border:"1px solid #232752",borderRadius:12,padding:"13px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:14,color:"rgba(251,191,36,0.7)"}}>✦</span>
-              <span style={{fontSize:13,fontWeight:600,flex:1}}>{m.title}</span>
-              <span style={{fontSize:11,color:"#475569"}}>→</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// ── My Map: questionnaire ───────────────────────────────────────────────────
 // Two steps, each a MultiSelectSearch scoped to different node types. Submits
 // the union of both steps' selections as the seed set for the generated map —
 // the SAME seed-set shape the Filter feature already consumes downstream
@@ -3279,11 +3300,16 @@ export default function WhatsTherapy() {
   // is true only during the brief initial check for an existing session, so
   // the landing screen doesn't flash before we know someone's already signed
   // in (e.g. returning in the same browser later that day).
-  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps"
+  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView"
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthor, setIsAuthor] = useState(false);
+
+  // Author map view state — populated when entering authorMapView mode
+  const [authorMapTitle, setAuthorMapTitle] = useState("");
+  const [authorMapIds, setAuthorMapIds] = useState(() => new Set());
+  const [authorMapStepNotes, setAuthorMapStepNotes] = useState({}); // { [nodeId]: stepSummary }
 
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
@@ -3400,6 +3426,16 @@ export default function WhatsTherapy() {
 
   const handleChooseExplore = () => setAppMode("explore");
   const handleChooseAuthorMaps = () => setAppMode("authorMaps");
+
+  // Opens an author map on the canvas in read-only view
+  const openAuthorMapView = useCallback((map, steps) => {
+    setAuthorMapTitle(map.title);
+    setAuthorMapIds(new Set(steps.map(s => s.node_id)));
+    const notes = {};
+    steps.forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
+    setAuthorMapStepNotes(notes);
+    setAppMode("authorMapView");
+  }, []);
   const handleChooseMyMap = () => {
     if (!session) { setAppMode("signin"); return; }
     setAppMode(processes.length > 0 ? "myMap" : "questionnaire");
@@ -4258,11 +4294,6 @@ export default function WhatsTherapy() {
   // already does for the Filter panel.
   useEffect(() => {
     if (appMode === "myMap") {
-      // Always reinitialize from BASE_POSITIONS for myMap — never from the
-      // explore overlay. This is the hard guarantee that explore drags can
-      // never bleed into any myMap under any timing condition.
-      // Map-specific drag overrides are applied on top by getNodePos at
-      // render/animation time once the map is active.
       animator.init(NODES, NODE_SIZES, (id) => {
         const pid = currentProcessIdRef.current;
         return (pid && positionOverlayRef.current.maps[pid]?.[id])
@@ -4273,13 +4304,17 @@ export default function WhatsTherapy() {
       setFilterIds(myMapIds);
       applyFilterAnimation(myMapIds, true);
     } else if (appMode === "explore") {
-      // Reinitialize with explore overlay so myMap drags don't bleed back.
       animator.init(NODES, NODE_SIZES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
+    } else if (appMode === "authorMapView") {
+      animator.init(NODES, NODE_SIZES, (id) => BASE_POSITIONS[id] || { x: 0, y: 0 });
+      filterIdsRef.current = authorMapIds;
+      setFilterIds(authorMapIds);
+      applyFilterAnimation(authorMapIds, true);
     }
-  }, [appMode, myMapIds, applyFilterAnimation]);
+  }, [appMode, myMapIds, authorMapIds, applyFilterAnimation]);
 
   // ── My Maps (plural): the gallery list ─────────────────────────────────────
   // processes holds every map this person owns, for the My Maps dropdown.
@@ -4828,12 +4863,13 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         <AuthorMapsScreen
           onBack={()=>setAppMode("landing")}
           onCopy={copyFromAuthorMap}
+          onView={openAuthorMapView}
           isAuthor={isAuthor}
           session={session}
         />
       )}
 
-      {(appMode === "explore" || appMode === "myMap" || appMode === "builder") && (
+      {(appMode === "explore" || appMode === "myMap" || appMode === "builder" || appMode === "authorMapView") && (
         <>
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
@@ -4852,6 +4888,20 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 style={{background: builderSteps.length>0 ? "#7F77DD" : "#2A2D45",color: builderSteps.length>0 ? "#0A0C1A" : "#64748b",border:"none",borderRadius:20,fontSize:12,fontWeight:700,padding:"5px 16px",cursor: builderSteps.length>0 ? "pointer" : "default",fontFamily:"inherit"}}>
                 Done
               </button>
+            </div>
+          ) : appMode === "authorMapView" ? (
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <button onClick={()=>setAppMode("authorMaps")}
+                style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
+                ← Author's Maps
+              </button>
+              <span style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>✦ {authorMapTitle}</span>
+              {session && (
+                <button onClick={()=>copyFromAuthorMap(null, authorMapTitle, [...authorMapIds].map((id,i) => ({ node_id: id, position: i, step_summary: authorMapStepNotes[id]||null })))}
+                  style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                  ⎘ Copy to My Maps
+                </button>
+              )}
             </div>
           ) : (
           <div style={{display:"flex",background:"#11142A",border:"1px solid #232752",borderRadius:20,padding:2}}>
@@ -5383,6 +5433,14 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                           Your note for this step
                         </div>
                         <div style={{fontSize:13,color:"#e2e8f0",lineHeight:1.6}}>{myMapStepNotes[selected]}</div>
+                      </div>
+                    )}
+                    {appMode === "authorMapView" && authorMapStepNotes[selected] && (
+                      <div style={{background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.4)",borderRadius:8,padding:"10px 12px",marginBottom:14}}>
+                        <div style={{fontSize:10.5,fontWeight:700,color:"#fbbf24",letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>
+                          ✦ Author's note
+                        </div>
+                        <div style={{fontSize:13,color:"#e2e8f0",lineHeight:1.6}}>{authorMapStepNotes[selected]}</div>
                       </div>
                     )}
                     <p style={{fontSize:13.5,lineHeight:1.7,color:"#94a3b8",marginBottom:14}}>{selectedNode.summary}</p>
