@@ -2575,7 +2575,7 @@ function BuilderDoneModal({ stepCount, initialTitle, isEditing, onSave, onClose 
   );
 }
 
-function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDelete }) {
+function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDelete, onCopy }) {
   const [open, setOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -2620,6 +2620,9 @@ function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDel
                       style={{flex:1,textAlign:"left",background:"none",border:"none",color: p.id===currentProcessId ? "#e2e8f0" : "#94a3b8",fontSize:13,fontWeight: p.id===currentProcessId ? 600 : 400,cursor:"pointer",fontFamily:"inherit",padding:"4px 2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {p.title}
                     </button>
+                    <button onClick={()=>{ onCopy(p.id, p.title); setOpen(false); }} aria-label="Copy map"
+                      title="Copy map"
+                      style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:4}}>⎘</button>
                     <button onClick={()=>startRename(p)} aria-label="Rename"
                       style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:4}}>✎</button>
                     <button onClick={()=>setConfirmDeleteId(p.id)} aria-label="Delete"
@@ -4209,7 +4212,79 @@ export default function WhatsTherapy() {
     }
   }, [currentProcessId]);
 
-  const generateInsight = async () => {
+  // ── Copy a map ───────────────────────────────────────────────────────────────
+  // Creates a fully independent duplicate of any process owned by this user,
+  // copying steps (with order and step_summary) and node positions.
+  // sourceType: "process" (My Map) | "author_map" (future Author's Maps)
+  const copyProcess = useCallback(async (sourceProcessId, sourceTitle) => {
+    if (!session) return;
+    const newTitle = `${sourceTitle || "Untitled map"} (copy)`;
+
+    // 1. Fetch source steps
+    const { data: sourceSteps, error: stepsErr } = await supabase
+      .from("process_steps")
+      .select("node_id, position, step_summary")
+      .eq("process_id", sourceProcessId)
+      .order("position");
+    if (stepsErr) { console.error("Failed to fetch source steps:", stepsErr.message); return; }
+
+    // 2. Fetch source node positions
+    const { data: sourcePositions, error: posErr } = await supabase
+      .from("map_node_positions")
+      .select("node_id, x, y")
+      .eq("map_id", sourceProcessId)
+      .eq("user_id", session.user.id);
+    if (posErr) { console.error("Failed to fetch source positions:", posErr.message); return; }
+
+    // 3. Create new process
+    const { data: newProcess, error: procErr } = await supabase
+      .from("processes")
+      .insert({ owner_id: session.user.id, title: newTitle })
+      .select("id, title")
+      .single();
+    if (procErr) { console.error("Failed to create copy:", procErr.message); return; }
+
+    // 4. Copy steps
+    if (sourceSteps?.length > 0) {
+      const newRows = sourceSteps.map(s => ({
+        process_id: newProcess.id,
+        node_id: s.node_id,
+        position: s.position,
+        step_summary: s.step_summary || null,
+      }));
+      const { error: insertErr } = await supabase.from("process_steps").insert(newRows);
+      if (insertErr) { console.error("Failed to copy steps:", insertErr.message); return; }
+    }
+
+    // 5. Copy node positions
+    if (sourcePositions?.length > 0) {
+      const newPositions = sourcePositions.map(p => ({
+        user_id: session.user.id,
+        map_id: newProcess.id,
+        node_id: p.node_id,
+        x: p.x,
+        y: p.y,
+      }));
+      const { error: posInsertErr } = await supabase.from("map_node_positions").insert(newPositions);
+      if (posInsertErr) { console.error("Failed to copy positions:", posInsertErr.message); return; }
+    }
+
+    // 6. Load the new map
+    setProcesses(prev => [...prev, newProcess]);
+    locallyKnownProcessIdRef.current = newProcess.id;
+    setCurrentProcessId(newProcess.id);
+    const notes = {};
+    const order = {};
+    (sourceSteps || []).forEach((s, i) => {
+      if (s.step_summary) notes[s.node_id] = s.step_summary;
+      order[s.node_id] = s.position ?? i;
+    });
+    setMyMapIds(new Set((sourceSteps || []).map(s => s.node_id)));
+    setMyMapStepNotes(notes);
+    setMyMapStepOrder(order);
+    setMyMapLoaded(true);
+    setAppMode("myMap");
+  }, [session]);
     const n = nodeById(selected); if(!n) return;
     if(insightCache.current[selected]) { setInsight(insightCache.current[selected]); setTab("insight"); return; }
     setTab("insight"); setLoading(true); setInsight("");
@@ -4361,12 +4436,21 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 onSelect={setCurrentProcessId}
                 onRename={renameProcess}
                 onDelete={deleteProcess}
+                onCopy={copyProcess}
               />
               {currentProcessId && (
-                <button onClick={startEditProcessBuilder}
-                  style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                  ✎ Edit steps
-                </button>
+                <>
+                  <button onClick={startEditProcessBuilder}
+                    style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                    ✎ Edit steps
+                  </button>
+                  <button
+                    onClick={() => { const p = processes.find(p => p.id === currentProcessId); if (p) copyProcess(p.id, p.title); }}
+                    title="Copy this map"
+                    style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                    ⎘ Copy map
+                  </button>
+                </>
               )}
               <button onClick={startNewProcessBuilder}
                 style={{background:"none",border:"1px solid #232752",borderRadius:20,color:"#7F77DD",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
