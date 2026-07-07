@@ -4285,6 +4285,8 @@ export default function WhatsTherapy() {
     setMyMapLoaded(true);
     setAppMode("myMap");
   }, [session]);
+
+  const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
     if(insightCache.current[selected]) { setInsight(insightCache.current[selected]); setTab("insight"); return; }
     setTab("insight"); setLoading(true); setInsight("");
