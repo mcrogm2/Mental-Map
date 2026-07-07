@@ -2170,12 +2170,202 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
   );
 }
 
-// ── Author's Maps: list + viewer screen ────────────────────────────────────
+// ── Author Map Editor ─────────────────────────────────────────────────────────
+// Simple direct editor for author maps — no questionnaire, just search + steps.
+function AuthorMapEditor({ map, onBack, session }) {
+  const [steps, setSteps] = useState([]); // [{nodeId, summary}]
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [editingStep, setEditingStep] = useState(null); // nodeId being commented
+  const [editingText, setEditingText] = useState("");
+
+  // Load existing steps on mount
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from("author_map_steps")
+        .select("node_id, position, step_summary")
+        .eq("map_id", map.id)
+        .order("position");
+      setSteps((data || []).map(s => ({ nodeId: s.node_id, summary: s.step_summary || "" })));
+      setLoading(false);
+    })();
+  }, [map.id]);
+
+  const selectedNodeIds = new Set(steps.map(s => s.nodeId));
+
+  const handleAddNode = (nodeId) => {
+    if (selectedNodeIds.has(nodeId)) {
+      setSteps(prev => prev.filter(s => s.nodeId !== nodeId));
+    } else {
+      setSteps(prev => [...prev, { nodeId, summary: "" }]);
+    }
+  };
+
+  const handleReorder = (newOrder) => {
+    setSteps(prev => {
+      const map = Object.fromEntries(prev.map(s => [s.nodeId, s]));
+      return newOrder.map(id => map[id]).filter(Boolean);
+    });
+  };
+
+  const handleRemove = (nodeId) => {
+    setSteps(prev => prev.filter(s => s.nodeId !== nodeId));
+    if (editingStep === nodeId) setEditingStep(null);
+  };
+
+  const handleSelectStep = (nodeId) => {
+    const step = steps.find(s => s.nodeId === nodeId);
+    setEditingStep(nodeId);
+    setEditingText(step?.summary || "");
+  };
+
+  const handleSaveComment = () => {
+    setSteps(prev => prev.map(s => s.nodeId === editingStep ? { ...s, summary: editingText } : s));
+    setEditingStep(null);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    // Delete existing steps then reinsert
+    await supabase.from("author_map_steps").delete().eq("map_id", map.id);
+    if (steps.length > 0) {
+      const rows = steps.map((s, i) => ({
+        map_id: map.id,
+        node_id: s.nodeId,
+        position: i,
+        step_summary: s.summary || null,
+      }));
+      await supabase.from("author_map_steps").insert(rows);
+    }
+    // Update updated_at
+    await supabase.from("author_maps").update({ updated_at: new Date().toISOString() }).eq("id", map.id);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  if (loading) return (
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"#64748b",fontSize:13}}>
+      Loading…
+    </div>
+  );
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:"1px solid #1C2040",flexShrink:0}}>
+        <button onClick={onBack}
+          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
+          ← Back
+        </button>
+        <span style={{fontSize:15,fontWeight:700,color:"#fbbf24",flex:1}}>✦ {map.title}</span>
+        <span style={{fontSize:12,color:"#64748b"}}>{steps.length} step{steps.length===1?"":"s"}</span>
+        <button onClick={handleSave} disabled={saving}
+          style={{background: saved ? "#22c55e" : "#fbbf24",border:"none",borderRadius:20,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"6px 16px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.7:1,transition:"background 0.3s"}}>
+          {saving ? "Saving…" : saved ? "✓ Saved" : "Save map"}
+        </button>
+      </div>
+
+      {/* Body — search panel + step list */}
+      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+
+        {/* Left: node search */}
+        <div style={{width:260,flexShrink:0,borderRight:"1px solid #1C2040",display:"flex",flexDirection:"column",overflowY:"auto",padding:"14px 12px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:1,marginBottom:10}}>ADD NODES</div>
+          <MultiSelectSearch
+            types={["modality","concept","challenge","skill"]}
+            selectedIds={selectedNodeIds}
+            onToggle={handleAddNode}
+            placeholder="Search nodes…"
+          />
+        </div>
+
+        {/* Right: step list with comments */}
+        <div style={{flex:1,overflowY:"auto",padding:"14px 16px"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",letterSpacing:1,marginBottom:10}}>STEPS</div>
+          {steps.length === 0 ? (
+            <div style={{fontSize:13,color:"#64748b",lineHeight:1.7}}>
+              Search for nodes on the left and add them as steps. Click a step to add a comment.
+            </div>
+          ) : (
+            <Reorder.Group axis="y" values={steps.map(s=>s.nodeId)} onReorder={handleReorder}
+              style={{listStyle:"none",margin:0,padding:0}}>
+              {steps.map((s, i) => {
+                const node = nodeById(s.nodeId);
+                const c = COLORS[node?.type] || COLORS.modality;
+                const isEditing = editingStep === s.nodeId;
+                return (
+                  <Reorder.Item key={s.nodeId} value={s.nodeId}
+                    style={{background:"#11142A",border:`1px solid ${isEditing ? "#fbbf24" : "#232752"}`,borderRadius:12,padding:"10px 12px",marginBottom:8,cursor:"grab"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{width:20,height:20,borderRadius:"50%",background:"#fbbf24",color:"#1a0a00",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {i+1}
+                      </span>
+                      <span style={{width:8,height:8,borderRadius:"50%",background:c.fill,flexShrink:0}}/>
+                      <button onClick={()=>handleSelectStep(s.nodeId)}
+                        style={{flex:1,textAlign:"left",background:"none",border:"none",color:"#e2e8f0",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit",padding:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {node?.label.replace("\n"," ") || s.nodeId}
+                      </button>
+                      <button onClick={()=>handleRemove(s.nodeId)}
+                        style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,padding:2,flexShrink:0}}>✕</button>
+                    </div>
+                    {/* Inline comment editor */}
+                    {isEditing && (
+                      <div style={{marginTop:8,marginLeft:28}}>
+                        <textarea
+                          autoFocus
+                          value={editingText}
+                          onChange={e=>setEditingText(e.target.value)}
+                          placeholder="Add a note for this step…"
+                          rows={3}
+                          style={{width:"100%",background:"#0D1024",border:"1px solid #374151",borderRadius:8,color:"#e2e8f0",fontSize:12.5,padding:"8px 10px",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",outline:"none"}}
+                        />
+                        <div style={{display:"flex",gap:6,marginTop:6}}>
+                          <button onClick={handleSaveComment}
+                            style={{background:"#fbbf24",border:"none",borderRadius:8,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
+                            Done
+                          </button>
+                          <button onClick={()=>setEditingStep(null)}
+                            style={{background:"none",border:"1px solid #232752",borderRadius:8,color:"#94a3b8",fontSize:12,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {/* Show comment preview if not editing */}
+                    {!isEditing && s.summary && (
+                      <div style={{marginTop:5,marginLeft:28,fontSize:12,color:"#94a3b8",lineHeight:1.5,cursor:"pointer"}}
+                        onClick={()=>handleSelectStep(s.nodeId)}>
+                        {s.summary}
+                      </div>
+                    )}
+                    {!isEditing && !s.summary && (
+                      <div style={{marginTop:4,marginLeft:28,fontSize:11.5,color:"#475569",cursor:"pointer"}}
+                        onClick={()=>handleSelectStep(s.nodeId)}>
+                        + Add comment
+                      </div>
+                    )}
+                  </Reorder.Item>
+                );
+              })}
+            </Reorder.Group>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function AuthorMapsScreen({ onBack, onCopy, isAuthor, session }) {
   const [maps, setMaps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null); // { map, steps }
+  const [selected, setSelected] = useState(null); // { map, steps } for viewer
+  const [editing, setEditing] = useState(null);   // map object for editor
   const [copying, setCopying] = useState(false);
 
   // New map form (author only)
@@ -2238,6 +2428,17 @@ function AuthorMapsScreen({ onBack, onCopy, isAuthor, session }) {
     if (selected?.map.id === mapId) setSelected(null);
   };
 
+  // ── Editor (authors only) ───────────────────────────────────────────────────
+  if (editing) {
+    return (
+      <AuthorMapEditor
+        map={editing}
+        onBack={() => setEditing(null)}
+        session={session}
+      />
+    );
+  }
+
   // ── Viewer ──────────────────────────────────────────────────────────────────
   if (selected) {
     return (
@@ -2248,6 +2449,12 @@ function AuthorMapsScreen({ onBack, onCopy, isAuthor, session }) {
             ← Back
           </button>
           <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>{selected.map.title}</span>
+          {isAuthor && (
+            <button onClick={()=>setEditing(selected.map)}
+              style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+              ✎ Edit
+            </button>
+          )}
           {session && (
             <button onClick={handleCopy} disabled={copying}
               style={{background:"rgba(127,119,221,0.15)",border:"1px solid #7F77DD",borderRadius:20,color:"#a5b4fc",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit",opacity:copying?0.6:1}}>
