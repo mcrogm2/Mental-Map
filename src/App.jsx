@@ -3989,7 +3989,8 @@ export default function WhatsTherapy() {
     // every node already in the map, full stop — no neighborhood
     // intersection at all. Only the clicked node's highlight changes.
     let cluster;
-    if (appMode === "myMap") {
+    if (appMode === "myMap" || appMode === "authorMapView") {
+      // Never expand neighbors in a built map — show exactly the nodes in the map
       cluster = new Set(filterIdsRef.current);
       cluster.add(id);
     } else {
@@ -4353,19 +4354,23 @@ export default function WhatsTherapy() {
   const myMapOrderedIds = Object.keys(myMapStepOrder)
     .sort((a, b) => myMapStepOrder[a] - myMapStepOrder[b]);
 
-  // Drive the subtle traveling-dot animation: runs only in My Map, only with
-  // 2+ ordered steps (need at least one segment to travel along), and pauses
-  // — without resetting position — whenever a node's detail panel is open,
-  // per the agreed "less visual noise while reading" behavior.
+  // Author map step order derived from authorMapStepNotes keys in insertion order
+  // (author_map_steps are loaded ordered by position, so the Set preserves that)
+  const authorMapOrderedIds = [...authorMapIds].filter(id => true); // position order from DB load
+
   useEffect(() => {
-    const segmentCount = Math.max(0, myMapOrderedIds.length - 1);
-    if (appMode === "myMap" && segmentCount > 0) {
+    const isMyMap = appMode === "myMap" && myMapOrderedIds.length > 1;
+    const isAuthorMap = appMode === "authorMapView" && authorMapOrderedIds.length > 1;
+    const segmentCount = isMyMap ? Math.max(0, myMapOrderedIds.length - 1)
+                       : isAuthorMap ? Math.max(0, authorMapOrderedIds.length - 1)
+                       : 0;
+    if ((isMyMap || isAuthorMap) && segmentCount > 0) {
       processFlow.start(segmentCount);
-      processFlow.setSegmentCount(segmentCount); // keep in sync if step count changes while already running
+      processFlow.setSegmentCount(segmentCount);
     } else {
       processFlow.stop();
     }
-  }, [appMode, myMapOrderedIds.length]);
+  }, [appMode, myMapOrderedIds.length, authorMapOrderedIds.length]);
 
   useEffect(() => {
     processFlow.setPaused(!!selected);
@@ -5102,35 +5107,40 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 graph edge exists between them, since the whole point is a
                 reliable, always-visible path through a hand-built sequence —
                 not a reflection of the underlying node-relationship data. */}
-            {appMode === "myMap" && myMapOrderedIds.length > 1 && myMapOrderedIds.map((nodeId, i) => {
-              if (i === myMapOrderedIds.length - 1) return null; // last node has no "next" segment
-              const fromAnim = animState?.[nodeId], toAnim = animState?.[myMapOrderedIds[i+1]];
-              const fx = fromAnim?.x ?? basePos(nodeId).x, fy = fromAnim?.y ?? basePos(nodeId).y;
-              const tx = toAnim?.x ?? basePos(myMapOrderedIds[i+1]).x, ty = toAnim?.y ?? basePos(myMapOrderedIds[i+1]).y;
-              return (
-                <line key={`flow-path-${nodeId}`} x1={fx} y1={fy} x2={tx} y2={ty}
-                  stroke="#3B9EFF" strokeWidth="1.5" strokeOpacity="0.35" strokeLinecap="round"
-                />
-              );
-            })}
-            {appMode === "myMap" && myMapOrderedIds.length > 1 && (() => {
+            {(appMode === "myMap" || appMode === "authorMapView") && (() => {
+              const orderedIds = appMode === "myMap" ? myMapOrderedIds : authorMapOrderedIds;
+              if (orderedIds.length < 2) return null;
+              return orderedIds.map((nodeId, i) => {
+                if (i === orderedIds.length - 1) return null;
+                const fromAnim = animState?.[nodeId], toAnim = animState?.[orderedIds[i+1]];
+                const fx = fromAnim?.x ?? basePos(nodeId).x, fy = fromAnim?.y ?? basePos(nodeId).y;
+                const tx = toAnim?.x ?? basePos(orderedIds[i+1]).x, ty = toAnim?.y ?? basePos(orderedIds[i+1]).y;
+                const color = appMode === "authorMapView" ? "#fbbf24" : "#3B9EFF";
+                return (
+                  <line key={`flow-path-${nodeId}`} x1={fx} y1={fy} x2={tx} y2={ty}
+                    stroke={color} strokeWidth="1.5" strokeOpacity="0.35" strokeLinecap="round"
+                  />
+                );
+              });
+            })()}
+            {(appMode === "myMap" || appMode === "authorMapView") && (() => {
+              const orderedIds = appMode === "myMap" ? myMapOrderedIds : authorMapOrderedIds;
+              if (orderedIds.length < 2) return null;
               const { segmentIndex, localT } = processFlow.getPosition();
-              const fromId = myMapOrderedIds[segmentIndex], toId = myMapOrderedIds[segmentIndex + 1];
+              const fromId = orderedIds[segmentIndex], toId = orderedIds[segmentIndex + 1];
               if (!fromId || !toId) return null;
               const fromAnim = animState?.[fromId], toAnim = animState?.[toId];
               const fx = fromAnim?.x ?? basePos(fromId).x, fy = fromAnim?.y ?? basePos(fromId).y;
               const tx = toAnim?.x ?? basePos(toId).x, ty = toAnim?.y ?? basePos(toId).y;
               const dotX = fx + (tx - fx) * localT, dotY = fy + (ty - fy) * localT;
-              // Angle of travel, in degrees, for rotating the triangle to point
-              // toward the destination node. SVG's rotate() is clockwise from
-              // the positive x-axis; atan2 already gives us exactly that.
               const angleDeg = Math.atan2(ty - fy, tx - fx) * (180 / Math.PI);
+              const color = appMode === "authorMapView" ? "#fbbf24" : "#3B9EFF";
               return (
                 <g style={{pointerEvents:"none"}}>
-                  <circle cx={dotX} cy={dotY} r={7} fill="#3B9EFF" opacity={0.25}/>
+                  <circle cx={dotX} cy={dotY} r={7} fill={color} opacity={0.25}/>
                   <polygon
                     points="5,0 -3,-3.5 -3,3.5"
-                    fill="#3B9EFF" opacity={0.95}
+                    fill={color} opacity={0.95}
                     transform={`translate(${dotX},${dotY}) rotate(${angleDeg})`}
                   />
                 </g>
