@@ -3230,10 +3230,15 @@ export default function WhatsTherapy() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthor, setIsAuthor] = useState(false);
 
+  // Author map view state — populated when entering authorMapView mode
+  const [authorMapTitle, setAuthorMapTitle] = useState("");
+  const [authorMapIds, setAuthorMapIds] = useState(() => new Set());
+  const [authorMapStepNotes, setAuthorMapStepNotes] = useState({});
+
   // Author map editing state — only used when isAuthor=true in authorMapView
   const [authorMapEditing, setAuthorMapEditing] = useState(false);
-  const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]); // [{nodeId, summary}]
-  const [authorMapId, setAuthorMapId] = useState(null); // current author map's DB id
+  const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
+  const [authorMapId, setAuthorMapId] = useState(null);
 
   const startAuthorMapEdit = useCallback(() => {
     // Seed edit steps from current view state
