@@ -4855,7 +4855,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
-          <span style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em"}}>What's Therapy</span>
+          <button onClick={()=>setAppMode("landing")}
+            style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
+            What's Therapy
+          </button>
           {appMode === "builder" ? (
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:12,color:"#64748b"}}>
