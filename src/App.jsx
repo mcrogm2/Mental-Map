@@ -3230,10 +3230,58 @@ export default function WhatsTherapy() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthor, setIsAuthor] = useState(false);
 
-  // Author map view state — populated when entering authorMapView mode
-  const [authorMapTitle, setAuthorMapTitle] = useState("");
-  const [authorMapIds, setAuthorMapIds] = useState(() => new Set());
-  const [authorMapStepNotes, setAuthorMapStepNotes] = useState({}); // { [nodeId]: stepSummary }
+  // Author map editing state — only used when isAuthor=true in authorMapView
+  const [authorMapEditing, setAuthorMapEditing] = useState(false);
+  const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]); // [{nodeId, summary}]
+  const [authorMapId, setAuthorMapId] = useState(null); // current author map's DB id
+
+  const startAuthorMapEdit = useCallback(() => {
+    // Seed edit steps from current view state
+    const steps = [...authorMapIds].map(id => ({
+      nodeId: id,
+      summary: authorMapStepNotes[id] || "",
+    }));
+    setAuthorMapEditSteps(steps);
+    setAuthorMapEditing(true);
+  }, [authorMapIds, authorMapStepNotes]);
+
+  const handleAuthorMapNodeTap = useCallback((nodeId) => {
+    setAuthorMapEditSteps(prev => {
+      const exists = prev.find(s => s.nodeId === nodeId);
+      if (exists) return prev.filter(s => s.nodeId !== nodeId);
+      return [...prev, { nodeId, summary: "" }];
+    });
+  }, []);
+
+  const handleAuthorMapStepNote = useCallback((nodeId, summary) => {
+    setAuthorMapEditSteps(prev => prev.map(s => s.nodeId === nodeId ? { ...s, summary } : s));
+  }, []);
+
+  const finishAuthorMapEdit = useCallback(async () => {
+    if (!session || !authorMapId) return;
+    // Save to author_map_steps
+    await supabase.from("author_map_steps").delete().eq("map_id", authorMapId);
+    if (authorMapEditSteps.length > 0) {
+      const rows = authorMapEditSteps.map((s, i) => ({
+        map_id: authorMapId,
+        node_id: s.nodeId,
+        position: i,
+        step_summary: s.summary || null,
+      }));
+      await supabase.from("author_map_steps").insert(rows);
+    }
+    // Update view state
+    const newIds = new Set(authorMapEditSteps.map(s => s.nodeId));
+    const newNotes = {};
+    authorMapEditSteps.forEach(s => { if (s.summary) newNotes[s.nodeId] = s.summary; });
+    setAuthorMapIds(newIds);
+    setAuthorMapStepNotes(newNotes);
+    setAuthorMapEditing(false);
+    // Re-apply filter to canvas
+    filterIdsRef.current = newIds;
+    setFilterIds(newIds);
+    applyFilterAnimation(newIds, true);
+  }, [session, authorMapId, authorMapEditSteps, applyFilterAnimation]);
 
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
@@ -3354,10 +3402,12 @@ export default function WhatsTherapy() {
   // Opens an author map on the canvas in read-only view
   const openAuthorMapView = useCallback((map, steps) => {
     setAuthorMapTitle(map.title);
+    setAuthorMapId(map.id);
     setAuthorMapIds(new Set(steps.map(s => s.node_id)));
     const notes = {};
     steps.forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
     setAuthorMapStepNotes(notes);
+    setAuthorMapEditing(false);
     setAppMode("authorMapView");
   }, []);
   const handleChooseMyMap = () => {
@@ -4814,17 +4864,41 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               </button>
             </div>
           ) : appMode === "authorMapView" ? (
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginLeft:"auto"}}>
               <button onClick={()=>setAppMode("authorMaps")}
                 style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
                 ← Author's Maps
               </button>
               <span style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>✦ {authorMapTitle}</span>
-              {session && (
-                <button onClick={()=>copyFromAuthorMap(null, authorMapTitle, [...authorMapIds].map((id,i) => ({ node_id: id, position: i, step_summary: authorMapStepNotes[id]||null })))}
-                  style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                  ⎘ Copy to My Maps
-                </button>
+              {authorMapEditing ? (
+                <>
+                  <span style={{fontSize:12,color:"#64748b"}}>
+                    {authorMapEditSteps.length} step{authorMapEditSteps.length===1?"":"s"}
+                  </span>
+                  <button onClick={()=>setAuthorMapEditing(false)}
+                    style={{background:"none",border:"1px solid #374151",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                    Cancel
+                  </button>
+                  <button onClick={finishAuthorMapEdit}
+                    style={{background:"#fbbf24",border:"none",borderRadius:20,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"5px 16px",cursor:"pointer",fontFamily:"inherit"}}>
+                    Save
+                  </button>
+                </>
+              ) : (
+                <>
+                  {isAuthor && (
+                    <button onClick={startAuthorMapEdit}
+                      style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit"}}>
+                      ✎ Edit
+                    </button>
+                  )}
+                  {session && !isAuthor && (
+                    <button onClick={()=>copyFromAuthorMap(null, authorMapTitle, [...authorMapIds].map((id,i) => ({ node_id: id, position: i, step_summary: authorMapStepNotes[id]||null })))}
+                      style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"5px 12px",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                      ⎘ Copy to My Maps
+                    </button>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -5065,20 +5139,22 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             {NODES.map(n=>{
               const c = COLORS[n.type];
               const isBuilder = appMode === "builder";
+              const isAuthorEdit = appMode === "authorMapView" && authorMapEditing;
               const builderIdx = isBuilder ? builderSteps.findIndex(s => s.nodeId === n.id) : -1;
               const builderSelected = builderIdx !== -1;
+              const authorEditSelected = isAuthorEdit ? authorMapEditSteps.some(s => s.nodeId === n.id) : false;
 
               const anim = animState?.[n.id];
-              // Builder mode never touches the animated system — canvas stays
-              // still, no zoom/gather, exactly per spec. Position/size come
-              // straight from the node's base layout; only opacity/styling
-              // changes to reflect builder selection.
-              const r    = isBuilder ? (NODE_SIZES[n.id] ?? 22) : (anim?.radius ?? NODE_SIZES[n.id] ?? 22);
-              const op   = isBuilder ? (builderSelected ? 1 : 0.32) : (anim?.opacity ?? 1);
-              const glow = isBuilder ? (builderSelected ? 0.7 : 0) : (anim?.glow ?? 0);
-              const pulse = isBuilder ? 0 : (anim?.pulse ?? 0);
-              const nx   = isBuilder ? getNodePos(n.id).x : (anim?.x ?? getNodePos(n.id).x);
-              const ny   = isBuilder ? getNodePos(n.id).y : (anim?.y ?? getNodePos(n.id).y);
+              const r    = (isBuilder || isAuthorEdit) ? (NODE_SIZES[n.id] ?? 22) : (anim?.radius ?? NODE_SIZES[n.id] ?? 22);
+              const op   = isBuilder ? (builderSelected ? 1 : 0.32)
+                         : isAuthorEdit ? (authorEditSelected ? 1 : 0.32)
+                         : (anim?.opacity ?? 1);
+              const glow = isBuilder ? (builderSelected ? 0.7 : 0)
+                         : isAuthorEdit ? (authorEditSelected ? 0.7 : 0)
+                         : (anim?.glow ?? 0);
+              const pulse = (isBuilder || isAuthorEdit) ? 0 : (anim?.pulse ?? 0);
+              const nx   = (isBuilder || isAuthorEdit) ? getNodePos(n.id).x : (anim?.x ?? getNodePos(n.id).x);
+              const ny   = (isBuilder || isAuthorEdit) ? getNodePos(n.id).y : (anim?.y ?? getNodePos(n.id).y);
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
@@ -5090,11 +5166,19 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <g key={n.id}
                   transform={`translate(${nx},${ny})`}
                   opacity={op}
-                  style={{cursor: isBuilder ? "pointer" : (op < 0.05 ? "default" : "grab")}}
-                  onMouseDown={e => { if (isBuilder) { e.stopPropagation(); handleBuilderNodeTap(n.id); } else { op > 0.05 && onNodeMouseDown(e, n.id); } }}
-                  onTouchStart={e => { if (isBuilder) { e.stopPropagation(); e.preventDefault(); handleBuilderNodeTap(n.id); } else { op > 0.05 && onNodeTouchStart(e, n.id); } }}
+                  style={{cursor: (isBuilder || isAuthorEdit) ? "pointer" : (op < 0.05 ? "default" : "grab")}}
+                  onMouseDown={e => {
+                    if (isBuilder) { e.stopPropagation(); handleBuilderNodeTap(n.id); }
+                    else if (isAuthorEdit) { e.stopPropagation(); handleAuthorMapNodeTap(n.id); }
+                    else { op > 0.05 && onNodeMouseDown(e, n.id); }
+                  }}
+                  onTouchStart={e => {
+                    if (isBuilder) { e.stopPropagation(); e.preventDefault(); handleBuilderNodeTap(n.id); }
+                    else if (isAuthorEdit) { e.stopPropagation(); e.preventDefault(); handleAuthorMapNodeTap(n.id); }
+                    else { op > 0.05 && onNodeTouchStart(e, n.id); }
+                  }}
                   onMouseEnter={e => {
-                    if (isBuilder) return; // no hover tooltip in builder mode — tapping IS the interaction
+                    if (isBuilder || isAuthorEdit) return;
                     if (op < 0.1) return;
                     const svg = e.currentTarget.closest("svg");
                     const rect = svg.getBoundingClientRect();
@@ -5482,6 +5566,25 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             onAddNode={handleBuilderNodeTap}
           />
         )}
+
+        {appMode === "authorMapView" && authorMapEditing && (
+          <BuilderStepsSidebar
+            steps={authorMapEditSteps}
+            onReorder={(newOrder) => {
+              setAuthorMapEditSteps(prev => {
+                const map = Object.fromEntries(prev.map(s => [s.nodeId, s]));
+                return newOrder.map(id => map[id]).filter(Boolean);
+              });
+            }}
+            onSelectStep={(nodeId) => {
+              const step = authorMapEditSteps.find(s => s.nodeId === nodeId);
+              setBuilderDescNodeId(nodeId);
+              // Reuse builder desc modal for note editing — wire save back to author steps
+            }}
+            onRemoveStep={(nodeId) => setAuthorMapEditSteps(prev => prev.filter(s => s.nodeId !== nodeId))}
+            onAddNode={handleAuthorMapNodeTap}
+          />
+        )}
       </div>
 
       {/* Overview fullscreen overlay — map/tabs stay mounted underneath,
@@ -5536,6 +5639,17 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onSave={(text)=>setBuilderStepSummary(builderDescNodeId, text)}
           onClose={()=>setBuilderDescNodeId(null)}
           onRemove={()=>removeBuilderStep(builderDescNodeId)}
+        />
+      )}
+
+      {appMode === "authorMapView" && authorMapEditing && builderDescNodeId && (
+        <BuilderDescriptionPopup
+          nodeLabel={nodeById(builderDescNodeId)?.label.replace("\n"," ")}
+          stepNumber={authorMapEditSteps.findIndex(s => s.nodeId === builderDescNodeId) + 1}
+          initialValue={authorMapEditSteps.find(s => s.nodeId === builderDescNodeId)?.summary}
+          onSave={(text) => { handleAuthorMapStepNote(builderDescNodeId, text); setBuilderDescNodeId(null); }}
+          onClose={()=>setBuilderDescNodeId(null)}
+          onRemove={()=>{ setAuthorMapEditSteps(prev => prev.filter(s => s.nodeId !== builderDescNodeId)); setBuilderDescNodeId(null); }}
         />
       )}
 
