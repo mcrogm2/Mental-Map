@@ -4148,7 +4148,7 @@ export default function WhatsTherapy() {
       // filtered view, not the full unfiltered map. exactOnly matches
       // whichever mode we're actually in: My Map shows exactly its chosen
       // nodes, Explore's Filter widget still expands to neighbors.
-      applyFilterAnimation(filterIdsRef.current, appMode === "myMap");
+      applyFilterAnimation(filterIdsRef.current, appMode === "myMap" || appMode === "authorMapView");
       return;
     }
 
