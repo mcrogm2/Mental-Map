@@ -3240,54 +3240,6 @@ export default function WhatsTherapy() {
   const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
   const [authorMapId, setAuthorMapId] = useState(null);
 
-  const startAuthorMapEdit = useCallback(() => {
-    // Seed edit steps from current view state
-    const steps = [...authorMapIds].map(id => ({
-      nodeId: id,
-      summary: authorMapStepNotes[id] || "",
-    }));
-    setAuthorMapEditSteps(steps);
-    setAuthorMapEditing(true);
-  }, [authorMapIds, authorMapStepNotes]);
-
-  const handleAuthorMapNodeTap = useCallback((nodeId) => {
-    setAuthorMapEditSteps(prev => {
-      const exists = prev.find(s => s.nodeId === nodeId);
-      if (exists) return prev.filter(s => s.nodeId !== nodeId);
-      return [...prev, { nodeId, summary: "" }];
-    });
-  }, []);
-
-  const handleAuthorMapStepNote = useCallback((nodeId, summary) => {
-    setAuthorMapEditSteps(prev => prev.map(s => s.nodeId === nodeId ? { ...s, summary } : s));
-  }, []);
-
-  const finishAuthorMapEdit = useCallback(async () => {
-    if (!session || !authorMapId) return;
-    // Save to author_map_steps
-    await supabase.from("author_map_steps").delete().eq("map_id", authorMapId);
-    if (authorMapEditSteps.length > 0) {
-      const rows = authorMapEditSteps.map((s, i) => ({
-        map_id: authorMapId,
-        node_id: s.nodeId,
-        position: i,
-        step_summary: s.summary || null,
-      }));
-      await supabase.from("author_map_steps").insert(rows);
-    }
-    // Update view state
-    const newIds = new Set(authorMapEditSteps.map(s => s.nodeId));
-    const newNotes = {};
-    authorMapEditSteps.forEach(s => { if (s.summary) newNotes[s.nodeId] = s.summary; });
-    setAuthorMapIds(newIds);
-    setAuthorMapStepNotes(newNotes);
-    setAuthorMapEditing(false);
-    // Re-apply filter to canvas
-    filterIdsRef.current = newIds;
-    setFilterIds(newIds);
-    applyFilterAnimation(newIds, true);
-  }, [session, authorMapId, authorMapEditSteps, applyFilterAnimation]);
-
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
   // Both appMode and currentProcessId are stored as refs here so the drag
@@ -4218,6 +4170,51 @@ export default function WhatsTherapy() {
     if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
     filterTimerRef.current = setTimeout(() => applyFilterAnimation(idsSet), 200);
   }, [applyFilterAnimation]);
+
+  // ── Author map edit callbacks (placed after applyFilterAnimation to avoid TDZ) ──
+  const startAuthorMapEdit = useCallback(() => {
+    const steps = [...authorMapIds].map(id => ({
+      nodeId: id,
+      summary: authorMapStepNotes[id] || "",
+    }));
+    setAuthorMapEditSteps(steps);
+    setAuthorMapEditing(true);
+  }, [authorMapIds, authorMapStepNotes]);
+
+  const handleAuthorMapNodeTap = useCallback((nodeId) => {
+    setAuthorMapEditSteps(prev => {
+      const exists = prev.find(s => s.nodeId === nodeId);
+      if (exists) return prev.filter(s => s.nodeId !== nodeId);
+      return [...prev, { nodeId, summary: "" }];
+    });
+  }, []);
+
+  const handleAuthorMapStepNote = useCallback((nodeId, summary) => {
+    setAuthorMapEditSteps(prev => prev.map(s => s.nodeId === nodeId ? { ...s, summary } : s));
+  }, []);
+
+  const finishAuthorMapEdit = useCallback(async () => {
+    if (!session || !authorMapId) return;
+    await supabase.from("author_map_steps").delete().eq("map_id", authorMapId);
+    if (authorMapEditSteps.length > 0) {
+      const rows = authorMapEditSteps.map((s, i) => ({
+        map_id: authorMapId,
+        node_id: s.nodeId,
+        position: i,
+        step_summary: s.summary || null,
+      }));
+      await supabase.from("author_map_steps").insert(rows);
+    }
+    const newIds = new Set(authorMapEditSteps.map(s => s.nodeId));
+    const newNotes = {};
+    authorMapEditSteps.forEach(s => { if (s.summary) newNotes[s.nodeId] = s.summary; });
+    setAuthorMapIds(newIds);
+    setAuthorMapStepNotes(newNotes);
+    setAuthorMapEditing(false);
+    filterIdsRef.current = newIds;
+    setFilterIds(newIds);
+    applyFilterAnimation(newIds, true);
+  }, [session, authorMapId, authorMapEditSteps, applyFilterAnimation]);
 
   const toggleFilterId = useCallback((id) => {
     // Selecting a topic filter also exits any single-node selection — the
