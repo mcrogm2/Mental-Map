@@ -3719,26 +3719,23 @@ export default function WhatsTherapy() {
   const [inviteIsNew, setInviteIsNew] = useState(false);
 
   useEffect(() => {
-    // Detect invite URL — /invite/TOKEN or /invite/TOKEN?new=1
-    const path = window.location.pathname;
-    const inviteMatch = path.match(/^\/invite\/([a-f0-9]+)$/i);
-    if (inviteMatch) {
-      const token = inviteMatch[1];
-      const isNew = new URLSearchParams(window.location.search).get("new") === "1";
-      // Persist token in sessionStorage so it survives the magic link redirect
-      sessionStorage.setItem("pendingInviteToken", token);
-      sessionStorage.setItem("pendingInviteIsNew", isNew ? "1" : "0");
-      setInviteToken(token);
-      setInviteIsNew(isNew);
+    // Detect invite token from query param ?invite=TOKEN
+    // This survives Supabase's magic link redirect (which appends #access_token
+    // as a hash but preserves query params).
+    const params = new URLSearchParams(window.location.search);
+    const inviteParam = params.get("invite");
+    if (inviteParam) {
+      console.log("[Invite] Token found in URL query param:", inviteParam);
+      sessionStorage.setItem("pendingInviteToken", inviteParam);
+      setInviteToken(inviteParam);
+      // Clean the URL without reload
       window.history.replaceState({}, "", "/");
     } else {
-      // On any other page load, check if we have a pending invite token
-      // (this fires after the magic link redirect brings the user back)
+      // Check sessionStorage for token from a previous page load
       const storedToken = sessionStorage.getItem("pendingInviteToken");
-      const storedIsNew = sessionStorage.getItem("pendingInviteIsNew") === "1";
       if (storedToken) {
+        console.log("[Invite] Token found in sessionStorage:", storedToken);
         setInviteToken(storedToken);
-        setInviteIsNew(storedIsNew);
       }
     }
 
