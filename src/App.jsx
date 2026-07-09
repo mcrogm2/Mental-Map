@@ -3669,28 +3669,13 @@ export default function WhatsTherapy() {
             .then(({ data }) => { setIsAuthor(!!data?.is_author); });
         }
 
-        // Auto-connect any pending invite for this email
+        // Auto-connect any pending invite via security definer function.
+        // Direct insert would be blocked by RLS (requires is_provider = true).
         if (newUserId && newUserEmail && isActuallyNewSignIn) {
-          supabase.from("map_invites")
-            .select("id, provider_id")
-            .eq("client_email", newUserEmail)
-            .eq("status", "pending")
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle()
-            .then(async ({ data: invite }) => {
-              if (invite) {
-                console.log("[Invite] Auto-connecting pending invite:", invite.id);
-                const { error: relErr } = await supabase
-                  .from("provider_clients")
-                  .insert({ provider_id: invite.provider_id, client_id: newUserId });
-                if (!relErr || relErr.message?.includes("duplicate")) {
-                  await supabase.from("map_invites")
-                    .update({ status: "accepted" })
-                    .eq("id", invite.id);
-                  console.log("[Invite] Auto-connection complete");
-                }
-              }
+          supabase.rpc("accept_invite")
+            .then(({ data, error }) => {
+              if (error) console.error("[Invite] accept_invite error:", error.message);
+              else console.log("[Invite] accept_invite result:", data);
             });
         }
 
