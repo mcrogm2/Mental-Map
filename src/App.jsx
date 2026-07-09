@@ -3652,6 +3652,15 @@ export default function WhatsTherapy() {
         supabase.from("user_profiles").select("is_author").eq("id", session.user.id).maybeSingle()
           .then(({ data }) => { if (data?.is_author) setIsAuthor(true); });
       }
+      // If already signed in and an invite token is present, connect immediately
+      if (session?.user?.id && session?.user?.email && initialInviteToken) {
+        console.log("[Invite] Already signed in, calling accept_invite");
+        supabase.rpc("accept_invite")
+          .then(({ data, error }) => {
+            if (error) console.error("[Invite] accept_invite error:", error.message);
+            else console.log("[Invite] accept_invite result:", JSON.stringify(data));
+          });
+      }
       if (session && window.location.hash.includes("access_token")) {
         setAppMode("loadingMyMap");
       }
@@ -3669,13 +3678,15 @@ export default function WhatsTherapy() {
             .then(({ data }) => { setIsAuthor(!!data?.is_author); });
         }
 
-        // Auto-connect any pending invite via security definer function.
-        // Direct insert would be blocked by RLS (requires is_provider = true).
-        if (newUserId && newUserEmail && isActuallyNewSignIn) {
+        // Always attempt invite connection when an invite token is present —
+        // don't gate on isActuallyNewSignIn since getSession() pre-sets
+        // lastUserIdRef causing the "new sign in" check to fail for returning users.
+        if (newUserId && newUserEmail && initialInviteToken) {
+          console.log("[Invite] Calling accept_invite for:", newUserEmail);
           supabase.rpc("accept_invite")
             .then(({ data, error }) => {
               if (error) console.error("[Invite] accept_invite error:", error.message);
-              else console.log("[Invite] accept_invite result:", data);
+              else console.log("[Invite] accept_invite result:", JSON.stringify(data));
             });
         }
 
