@@ -3740,7 +3740,7 @@ export default function WhatsTherapy() {
       setAuthLoading(false);
       lastUserIdRef.current = session?.user?.id ?? null;
       if (session?.user?.id) {
-        supabase.from("user_profiles").select("is_author").eq("id", session.user.id).single()
+        supabase.from("user_profiles").select("is_author").eq("id", session.user.id).maybeSingle()
           .then(({ data }) => { if (data?.is_author) setIsAuthor(true); });
       }
       if (session && window.location.hash.includes("access_token")) {
@@ -3755,7 +3755,7 @@ export default function WhatsTherapy() {
         const isActuallyNewSignIn = newUserId !== lastUserIdRef.current;
         lastUserIdRef.current = newUserId;
         if (newUserId) {
-          supabase.from("user_profiles").select("is_author").eq("id", newUserId).single()
+          supabase.from("user_profiles").select("is_author").eq("id", newUserId).maybeSingle()
             .then(({ data }) => { setIsAuthor(!!data?.is_author); });
         }
         if (isActuallyNewSignIn) {
