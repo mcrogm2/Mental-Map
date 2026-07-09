@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Reorder } from "motion/react";
-import { supabase } from "./supabaseClient";
+import { supabase, initialInviteToken } from "./supabaseClient";
 
 // ── Animation engine ───────────────────────────────────────────────────────────
 // Drives per-node animated values (opacity, radius, glowOpacity) outside React
@@ -3715,28 +3715,14 @@ export default function WhatsTherapy() {
   // questionnaire if the routing check re-ran at the wrong moment. Fixed by
   // only treating SIGNED_IN as meaningful when the user id actually changes.
   const lastUserIdRef = useRef(null);
-  const [inviteToken, setInviteToken] = useState(null);
+  const [inviteToken, setInviteToken] = useState(initialInviteToken);
   const [inviteIsNew, setInviteIsNew] = useState(false);
 
   useEffect(() => {
-    // Detect invite token from query param ?invite=TOKEN
-    // This survives Supabase's magic link redirect (which appends #access_token
-    // as a hash but preserves query params).
-    const params = new URLSearchParams(window.location.search);
-    const inviteParam = params.get("invite");
-    if (inviteParam) {
-      console.log("[Invite] Token found in URL query param:", inviteParam);
-      sessionStorage.setItem("pendingInviteToken", inviteParam);
-      setInviteToken(inviteParam);
-      // Clean the URL without reload
-      window.history.replaceState({}, "", "/");
-    } else {
-      // Check sessionStorage for token from a previous page load
-      const storedToken = sessionStorage.getItem("pendingInviteToken");
-      if (storedToken) {
-        console.log("[Invite] Token found in sessionStorage:", storedToken);
-        setInviteToken(storedToken);
-      }
+    // Token was already captured in supabaseClient.js before Supabase consumed
+    // the URL. Nothing to detect here — just log for debugging.
+    if (initialInviteToken) {
+      console.log("[Invite] Token ready from module load:", initialInviteToken);
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
