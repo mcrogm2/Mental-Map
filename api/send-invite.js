@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   const resendKey = process.env.RESEND_API_KEY;
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const appUrl = "https://www.whatstherapy.com";
+  const appUrl = "https://whatstherapy.com";
 
   if (!resendKey || !supabaseUrl || !serviceKey) {
     console.error("Missing environment variables.");
