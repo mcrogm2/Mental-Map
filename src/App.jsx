@@ -2126,7 +2126,127 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
 // is simulated by whether a My Map node set already exists in memory — real
 // auth replaces this check in a later stage without changing this component's
 // props/shape.
-function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps }) {
+// ── Invite landing screen ─────────────────────────────────────────────────────
+// Shown when a user arrives via /invite/TOKEN link from a provider.
+// Handles both new users (sign up) and existing users (sign in + connect).
+function InviteScreen({ token, isNew, onConnected }) {
+  const [status, setStatus] = useState("idle"); // idle | loading | connecting | connected | error
+  const [email, setEmail] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const connectInvite = async (userId) => {
+    // Look up the invite and create the provider-client relationship
+    const { data: invite, error: invErr } = await supabase
+      .from("map_invites")
+      .select("id, provider_id, status")
+      .eq("token", token)
+      .single();
+    if (invErr || !invite) { setStatus("error"); setErrorMsg("Invite not found or expired."); return; }
+    if (invite.status !== "pending") { setStatus("error"); setErrorMsg("This invite has already been used."); return; }
+
+    // Create provider-client relationship
+    const { error: relErr } = await supabase
+      .from("provider_clients")
+      .insert({ provider_id: invite.provider_id, client_id: userId })
+      .select()
+      .single();
+    if (relErr && !relErr.message.includes("duplicate")) {
+      setStatus("error"); setErrorMsg("Could not connect. Please try again."); return;
+    }
+
+    // Mark invite as accepted
+    await supabase.from("map_invites").update({ status: "accepted" }).eq("id", invite.id);
+    setStatus("connected");
+    setTimeout(() => onConnected(), 2000);
+  };
+
+  const handleSendMagicLink = async () => {
+    if (!email.trim()) return;
+    setStatus("loading");
+    const redirectTo = `${window.location.origin}`;
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: redirectTo }
+    });
+    if (error) { setStatus("error"); setErrorMsg(error.message); return; }
+    setEmailSent(true);
+    setStatus("idle");
+  };
+
+  // Listen for sign-in after magic link — auto-connect
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user?.id && token) {
+        setStatus("connecting");
+        await connectInvite(session.user.id);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [token]);
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,maxWidth:420,margin:"0 auto",width:"100%"}}>
+      <div style={{fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:8}}>What's Therapy</div>
+      <div style={{fontSize:14,color:"#94a3b8",marginBottom:32,textAlign:"center"}}>
+        Your provider has invited you to connect.
+      </div>
+
+      {status === "connected" && (
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:32,marginBottom:12}}>✓</div>
+          <div style={{fontSize:15,fontWeight:600,color:"#2dd4bf",marginBottom:6}}>Connected!</div>
+          <div style={{fontSize:13,color:"#94a3b8"}}>Taking you to your maps…</div>
+        </div>
+      )}
+
+      {status === "connecting" && (
+        <div style={{textAlign:"center",color:"#94a3b8",fontSize:13}}>Connecting you to your provider…</div>
+      )}
+
+      {status === "error" && (
+        <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"12px 14px",marginBottom:20,fontSize:13,color:"#fca5a5",textAlign:"center"}}>
+          {errorMsg}
+        </div>
+      )}
+
+      {status !== "connected" && status !== "connecting" && (
+        emailSent ? (
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:12}}>📬</div>
+            <div style={{fontSize:14,fontWeight:600,color:"#f1f5f9",marginBottom:6}}>Check your email</div>
+            <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>
+              We sent a sign-in link to <strong style={{color:"#e2e8f0"}}>{email}</strong>.
+              Click it and you'll be connected automatically.
+            </div>
+          </div>
+        ) : (
+          <div style={{width:"100%"}}>
+            <div style={{fontSize:13,color:"#94a3b8",marginBottom:16,textAlign:"center",lineHeight:1.6}}>
+              {isNew
+                ? "Enter your email to create your account and connect with your provider."
+                : "Enter your email to sign in and connect with your provider."}
+            </div>
+            <input
+              type="email"
+              value={email}
+              onChange={e=>setEmail(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter") handleSendMagicLink(); }}
+              placeholder="your@email.com"
+              style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:10,color:"#e2e8f0",fontSize:13,padding:"10px 12px",fontFamily:"inherit",marginBottom:12,boxSizing:"border-box",outline:"none"}}
+            />
+            <button onClick={handleSendMagicLink} disabled={!email.trim() || status==="loading"}
+              style={{width:"100%",background:"#7F77DD",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,padding:"12px",cursor:"pointer",fontFamily:"inherit",opacity:status==="loading"?0.6:1}}>
+              {status==="loading" ? "Sending…" : isNew ? "Create account & connect" : "Sign in & connect"}
+            </button>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, session }) {
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
       <div>
@@ -2165,12 +2285,317 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
             </div>
           </div>
         </button>
+
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onChooseProvider}
+            style={{background:"rgba(20,184,166,0.08)",border:"1px solid rgba(20,184,166,0.35)",borderRadius:16,padding:"16px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",flex:"1 1 0",minWidth:0,textAlign:"left"}}>
+            <div style={{fontSize:15,fontWeight:600,marginBottom:3}}>🩺 Provider</div>
+            <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5}}>
+              Manage clients and assign maps to support their journey.
+            </div>
+          </button>
+
+          <button onClick={onChoosePatient}
+            style={{background:"rgba(251,113,133,0.08)",border:"1px solid rgba(251,113,133,0.35)",borderRadius:16,padding:"16px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",flex:"1 1 0",minWidth:0,textAlign:"left"}}>
+            <div style={{fontSize:15,fontWeight:600,marginBottom:3}}>🌱 Patient</div>
+            <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.5}}>
+              View maps your provider has shared with you.
+            </div>
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Author Map Editor ─────────────────────────────────────────────────────────
+// ── Provider Portal ───────────────────────────────────────────────────────────
+function ProviderPortal({ session, onBack, processes, authorMaps }) {
+  const [view, setView] = useState("roster"); // "roster" | "client" | "invite" | "assign"
+  const [clients, setClients] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientMaps, setClientMaps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteStatus, setInviteStatus] = useState(null); // null | "sending" | "sent" | "error"
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [confirmTerminate, setConfirmTerminate] = useState(null);
+  const [authorMapsList, setAuthorMapsList] = useState([]);
+
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from("provider_clients")
+        .select("id, client_id, created_at, terminated_at")
+        .eq("provider_id", session.user.id)
+        .is("terminated_at", null);
+      // Fetch client emails from user_profiles or auth metadata
+      const enriched = await Promise.all((data || []).map(async (row) => {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("id", row.client_id)
+          .single();
+        // Use Supabase admin to get email — fallback to client_id display
+        return { ...row, email: profile ? `Client ${row.client_id.slice(0,8)}…` : "Unknown" };
+      }));
+      setClients(enriched);
+      setLoading(false);
+    })();
+  }, [session]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("author_maps").select("id, title").order("title");
+      setAuthorMapsList(data || []);
+    })();
+  }, []);
+
+  const loadClientMaps = async (client) => {
+    setSelectedClient(client);
+    setView("client");
+    const { data } = await supabase
+      .from("client_assigned_maps")
+      .select("id, process_id, author_map_id, assigned_at")
+      .eq("provider_id", session.user.id)
+      .eq("client_id", client.client_id);
+    setClientMaps(data || []);
+  };
+
+  const sendInvite = async () => {
+    if (!inviteEmail.trim() || !session) return;
+    setInviteStatus("sending");
+    // Insert invite record
+    const { data: invite, error } = await supabase
+      .from("map_invites")
+      .insert({ provider_id: session.user.id, client_email: inviteEmail.trim() })
+      .select("token")
+      .single();
+    if (error) { setInviteStatus("error"); return; }
+
+    const origin = window.location.origin;
+    const newUserUrl = `${origin}/invite/${invite.token}?new=1`;
+    const existingUserUrl = `${origin}/invite/${invite.token}`;
+
+    // Send via Supabase edge function or directly via fetch to your Resend endpoint
+    const res = await fetch("/api/send-invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: inviteEmail.trim(),
+        newUserUrl,
+        existingUserUrl,
+      }),
+    });
+    setInviteStatus(res.ok ? "sent" : "error");
+    if (res.ok) setInviteEmail("");
+  };
+
+  const assignMap = async (processId, authorMapId) => {
+    if (!selectedClient || !session) return;
+    setAssignLoading(true);
+    await supabase.from("client_assigned_maps").insert({
+      provider_id: session.user.id,
+      client_id: selectedClient.client_id,
+      process_id: processId || null,
+      author_map_id: authorMapId || null,
+    });
+    await loadClientMaps(selectedClient);
+    setAssignLoading(false);
+    setView("client");
+  };
+
+  const removeAssignedMap = async (assignmentId) => {
+    await supabase.from("client_assigned_maps").delete().eq("id", assignmentId);
+    setClientMaps(prev => prev.filter(m => m.id !== assignmentId));
+  };
+
+  const terminateRelationship = async (client) => {
+    await supabase
+      .from("provider_clients")
+      .update({ terminated_at: new Date().toISOString() })
+      .eq("id", client.id);
+    // Send notification email
+    await fetch("/api/send-termination", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: client.client_id }),
+    });
+    setClients(prev => prev.filter(c => c.id !== client.id));
+    setConfirmTerminate(null);
+    if (view === "client") setView("roster");
+  };
+
+  const teal = "rgba(20,184,166,";
+
+  // ── Assign screen ────────────────────────────────────────────────────────────
+  if (view === "assign") {
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <button onClick={()=>setView("client")} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Back</button>
+          <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>Assign a map</span>
+        </div>
+
+        {processes.length > 0 && (
+          <>
+            <div style={{fontSize:11,fontWeight:700,color:`${teal}0.8)`,letterSpacing:1,marginBottom:8}}>YOUR MAPS</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
+              {processes.map(p => (
+                <button key={p.id} onClick={()=>assignMap(p.id, null)} disabled={assignLoading}
+                  style={{background:"#11142A",border:`1px solid ${teal}0.25)`,borderRadius:10,padding:"11px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",fontSize:13,fontWeight:500}}>
+                  {p.title}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {authorMapsList.length > 0 && (
+          <>
+            <div style={{fontSize:11,fontWeight:700,color:"rgba(251,191,36,0.8)",letterSpacing:1,marginBottom:8}}>AUTHOR'S MAPS</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {authorMapsList.map(m => (
+                <button key={m.id} onClick={()=>assignMap(null, m.id)} disabled={assignLoading}
+                  style={{background:"#11142A",border:"1px solid rgba(251,191,36,0.25)",borderRadius:10,padding:"11px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",fontSize:13,fontWeight:500,display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{color:"rgba(251,191,36,0.7)"}}>✦</span>{m.title}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ── Client detail screen ─────────────────────────────────────────────────────
+  if (view === "client" && selectedClient) {
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <button onClick={()=>setView("roster")} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Clients</button>
+          <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>{selectedClient.email}</span>
+          <button onClick={()=>setView("assign")}
+            style={{background:`${teal}0.1)`,border:`1px solid ${teal}0.4)`,borderRadius:20,color:"#2dd4bf",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+            + Assign map
+          </button>
+        </div>
+
+        {clientMaps.length === 0 ? (
+          <div style={{fontSize:13,color:"#64748b"}}>No maps assigned yet. Hit "Assign map" to get started.</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+            {clientMaps.map(m => {
+              const label = m.process_id
+                ? processes.find(p => p.id === m.process_id)?.title || `Map ${m.process_id}`
+                : authorMapsList.find(a => a.id === m.author_map_id)?.title || "Author's Map";
+              const isAuthor = !!m.author_map_id;
+              return (
+                <div key={m.id} style={{background:"#11142A",border:`1px solid ${teal}0.2)`,borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                  {isAuthor && <span style={{color:"rgba(251,191,36,0.7)",fontSize:13}}>✦</span>}
+                  <span style={{flex:1,fontSize:13,fontWeight:500,color:"#e2e8f0"}}>{label}</span>
+                  <span style={{fontSize:11,color:"#475569"}}>{new Date(m.assigned_at).toLocaleDateString()}</span>
+                  <button onClick={()=>removeAssignedMap(m.id)}
+                    style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:12,padding:2}}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{marginTop:"auto",paddingTop:16,borderTop:"1px solid #1C2040"}}>
+          {confirmTerminate ? (
+            <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{fontSize:13,color:"#fca5a5",marginBottom:10}}>
+                This will end your relationship with this client. Uncopied maps will be lost and they'll receive an email notification.
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>terminateRelationship(selectedClient)}
+                  style={{background:"#ef4444",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                  Yes, end relationship
+                </button>
+                <button onClick={()=>setConfirmTerminate(null)}
+                  style={{background:"none",border:"1px solid #374151",borderRadius:8,color:"#94a3b8",fontSize:12,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setConfirmTerminate(selectedClient)}
+              style={{background:"none",border:"1px solid rgba(239,68,68,0.4)",borderRadius:8,color:"#f87171",fontSize:12,fontWeight:600,padding:"7px 16px",cursor:"pointer",fontFamily:"inherit"}}>
+              End client relationship
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Invite screen ────────────────────────────────────────────────────────────
+  if (view === "invite") {
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+          <button onClick={()=>setView("roster")} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Back</button>
+          <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9"}}>Invite a client</span>
+        </div>
+        <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6,marginBottom:20}}>
+          Enter your client's email. They'll receive a link to connect — one for new users and one if they already have an account.
+        </div>
+        <input
+          type="email"
+          value={inviteEmail}
+          onChange={e=>setInviteEmail(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter") sendInvite(); }}
+          placeholder="client@email.com"
+          style={{width:"100%",background:"#11142A",border:`1px solid ${teal}0.4)`,borderRadius:10,color:"#e2e8f0",fontSize:13,padding:"10px 12px",fontFamily:"inherit",marginBottom:12,boxSizing:"border-box",outline:"none"}}
+        />
+        <button onClick={sendInvite} disabled={!inviteEmail.trim() || inviteStatus==="sending"}
+          style={{background:`${teal}0.8)`,border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,padding:"10px",cursor:"pointer",fontFamily:"inherit",opacity:inviteStatus==="sending"?0.6:1}}>
+          {inviteStatus==="sending" ? "Sending…" : "Send invite"}
+        </button>
+        {inviteStatus==="sent" && <div style={{marginTop:12,fontSize:13,color:"#2dd4bf"}}>✓ Invite sent!</div>}
+        {inviteStatus==="error" && <div style={{marginTop:12,fontSize:13,color:"#f87171"}}>Something went wrong. Please try again.</div>}
+      </div>
+    );
+  }
+
+  // ── Roster screen ────────────────────────────────────────────────────────────
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Back</button>
+        <span style={{fontSize:17,fontWeight:700,color:"#f1f5f9",flex:1}}>🩺 Provider Portal</span>
+        <button onClick={()=>setView("invite")}
+          style={{background:`${teal}0.1)`,border:`1px solid ${teal}0.4)`,borderRadius:20,color:"#2dd4bf",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+          + Invite client
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{color:"#64748b",fontSize:13}}>Loading…</div>
+      ) : clients.length === 0 ? (
+        <div style={{fontSize:13,color:"#64748b",lineHeight:1.7}}>
+          No clients yet. Hit <strong style={{color:"#2dd4bf"}}>+ Invite client</strong> to send your first invite.
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {clients.map(c => (
+            <button key={c.id} onClick={()=>loadClientMaps(c)}
+              style={{background:"#11142A",border:`1px solid ${teal}0.2)`,borderRadius:12,padding:"13px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>👤</span>
+              <span style={{fontSize:13,fontWeight:600,flex:1}}>{c.email}</span>
+              <span style={{fontSize:11,color:"#475569"}}>→</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // Simple direct editor for author maps — no questionnaire, just search + steps.
 function AuthorMapEditor({ map, onBack, session }) {
   const [steps, setSteps] = useState([]); // [{nodeId, summary}]
@@ -3224,7 +3649,7 @@ export default function WhatsTherapy() {
   // is true only during the brief initial check for an existing session, so
   // the landing screen doesn't flash before we know someone's already signed
   // in (e.g. returning in the same browser later that day).
-  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView"
+  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView" | "provider" | "patient"
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -3312,7 +3737,22 @@ export default function WhatsTherapy() {
   // questionnaire if the routing check re-ran at the wrong moment. Fixed by
   // only treating SIGNED_IN as meaningful when the user id actually changes.
   const lastUserIdRef = useRef(null);
+  const [inviteToken, setInviteToken] = useState(null);
+  const [inviteIsNew, setInviteIsNew] = useState(false);
+
   useEffect(() => {
+    // Detect invite URL — /invite/TOKEN or /invite/TOKEN?new=1
+    const path = window.location.pathname;
+    const inviteMatch = path.match(/^\/invite\/([a-f0-9]+)$/i);
+    if (inviteMatch) {
+      const token = inviteMatch[1];
+      const isNew = new URLSearchParams(window.location.search).get("new") === "1";
+      setInviteToken(token);
+      setInviteIsNew(isNew);
+      // Clean URL without reload
+      window.history.replaceState({}, "", "/");
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setAuthLoading(false);
@@ -3355,6 +3795,8 @@ export default function WhatsTherapy() {
 
   const handleChooseExplore = () => setAppMode("explore");
   const handleChooseAuthorMaps = () => setAppMode("authorMaps");
+  const handleChooseProvider = () => { if (!session) { setAppMode("signin"); return; } setAppMode("provider"); };
+  const handleChoosePatient = () => { if (!session) { setAppMode("signin"); return; } setAppMode("patient"); };
 
   // Opens an author map on the canvas in read-only view
   const openAuthorMapView = useCallback((map, steps) => {
@@ -4821,12 +5263,25 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         </div>
       )}
 
-      {!authLoading && appMode === "landing" && (
+      {!authLoading && inviteToken && appMode === "landing" && (
+        <InviteScreen
+          token={inviteToken}
+          isNew={inviteIsNew}
+          onConnected={() => {
+            setInviteToken(null);
+            setAppMode("loadingMyMap");
+          }}
+        />
+      )}
+      {!authLoading && !inviteToken && appMode === "landing" && (
         <LandingScreen
           hasMyMap={processes.length > 0}
           onChooseExplore={handleChooseExplore}
           onChooseMyMap={handleChooseMyMap}
           onChooseAuthorMaps={handleChooseAuthorMaps}
+          onChooseProvider={handleChooseProvider}
+          onChoosePatient={handleChoosePatient}
+          session={session}
         />
       )}
 
@@ -4847,6 +5302,14 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onView={openAuthorMapView}
           isAuthor={isAuthor}
           session={session}
+        />
+      )}
+      {appMode === "provider" && (
+        <ProviderPortal
+          session={session}
+          onBack={()=>setAppMode("landing")}
+          processes={processes}
+          authorMaps={[]}
         />
       )}
 
