@@ -2138,12 +2138,15 @@ function InviteScreen({ token, onConnected }) {
       if (handled) return;
       handled = true;
       setStatus("connecting");
+      console.log("[Invite] connectInvite called, userId:", userId, "token:", token);
 
-      const { data: invite } = await supabase
+      const { data: invite, error: invErr } = await supabase
         .from("map_invites")
         .select("id, provider_id, status")
         .eq("token", token)
         .single();
+
+      console.log("[Invite] invite lookup:", invite, "error:", invErr);
 
       if (!invite) {
         setStatus("error");
@@ -2152,7 +2155,6 @@ function InviteScreen({ token, onConnected }) {
       }
 
       if (invite.status !== "pending") {
-        // Already accepted — relationship may already exist, just move on
         sessionStorage.removeItem("pendingInviteToken");
         setStatus("connected");
         setTimeout(() => onConnected(), 1500);
@@ -2162,6 +2164,8 @@ function InviteScreen({ token, onConnected }) {
       const { error: relErr } = await supabase
         .from("provider_clients")
         .insert({ provider_id: invite.provider_id, client_id: userId });
+
+      console.log("[Invite] provider_clients insert error:", relErr);
 
       if (relErr && !relErr.message?.includes("duplicate")) {
         setStatus("error");
@@ -2173,21 +2177,24 @@ function InviteScreen({ token, onConnected }) {
         .update({ status: "accepted" })
         .eq("id", invite.id);
 
+      console.log("[Invite] complete — relationship created");
       sessionStorage.removeItem("pendingInviteToken");
       sessionStorage.removeItem("pendingInviteIsNew");
       setStatus("connected");
       setTimeout(() => onConnected(), 1500);
     };
 
-    // Check if already signed in (existing user who clicked the link)
+    console.log("[Invite] Screen mounted, token:", token, "sessionStorage token:", sessionStorage.getItem("pendingInviteToken"));
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("[Invite] getSession:", session?.user?.id ?? "no session");
       if (session?.user?.id && !handled) {
         connectInvite(session.user.id);
       }
     });
 
-    // Also listen for sign-in event (new user completing magic link)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[Invite] authStateChange:", event, session?.user?.id ?? "no session");
       if (event === "SIGNED_IN" && session?.user?.id && !handled) {
         connectInvite(session.user.id);
       }
