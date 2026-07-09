@@ -1,7 +1,6 @@
 // POST /api/send-invite
-// Sends a one-click invite email to a prospective client via Resend.
-// Uses Supabase Admin API to generate a magic link, then embeds our invite
-// token in the redirect URL as a query param that survives the auth redirect.
+// Generates a magic link via Supabase Admin API and sends it via Resend.
+// One click — patient is signed in and connected to their provider automatically.
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -15,17 +14,15 @@ export default async function handler(req, res) {
   const resendKey = process.env.RESEND_API_KEY;
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const appUrl = "https://whatstherapy.com";
 
   if (!resendKey || !supabaseUrl || !serviceKey) {
     console.error("Missing environment variables.");
     return res.status(500).json({ error: "Server misconfiguration." });
   }
 
-  // The redirect_to URL must be in Supabase's allowlist.
-  // We use /?invite=TOKEN so the token survives as a query param.
-  // Supabase appends #access_token=... as a hash — our query param stays intact.
-  const redirectTo = `${appUrl}/?invite=${token}`;
+  // Generate magic link — redirects to site root after sign-in.
+  // Connection is made automatically in SIGNED_IN handler by email lookup.
+  const redirectTo = "https://whatstherapy.com";
 
   let magicLink;
   try {
@@ -65,14 +62,14 @@ export default async function handler(req, res) {
       <div style="font-size: 22px; font-weight: 700; color: #f1f5f9; margin-bottom: 8px;">What's Therapy</div>
       <div style="font-size: 14px; color: #94a3b8; margin-bottom: 28px;">Your provider has invited you to connect.</div>
       <p style="font-size: 14px; color: #cbd5e1; line-height: 1.7; margin-bottom: 28px;">
-        Click the button below to get started. Works for both new and existing accounts.
+        Click the button below to get started. This link signs you in automatically — no password needed.
       </p>
       <a href="${magicLink}"
         style="display: block; background: #7F77DD; color: #fff; text-decoration: none; text-align: center; padding: 16px 20px; border-radius: 10px; font-weight: 700; font-size: 15px; margin-bottom: 24px;">
         Accept invite &amp; get started →
       </a>
       <p style="font-size: 12px; color: #475569; line-height: 1.6;">
-        This link expires in 24 hours. If you weren't expecting this, you can safely ignore it.
+        This link expires in 1 hour and can only be used once. If you weren't expecting this, you can safely ignore it.
       </p>
     </div>
   `;

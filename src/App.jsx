@@ -2127,102 +2127,25 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
 // auth replaces this check in a later stage without changing this component's
 // props/shape.
 // ── Invite landing screen ─────────────────────────────────────────────────────
-// Shown when the user signs in via a provider invite magic link.
-// Looks up the pending invite by the user's email — no URL token needed.
+// Shown briefly while the magic link is being processed.
+// Connection is made automatically in the SIGNED_IN handler by email lookup.
 function InviteScreen({ onConnected }) {
-  const [status, setStatus] = useState("waiting");
-  const [errorMsg, setErrorMsg] = useState("");
-
   useEffect(() => {
-    let handled = false;
-
-    const connectByEmail = async (userId, email) => {
-      if (handled) return;
-      handled = true;
-      setStatus("connecting");
-      console.log("[Invite] connectByEmail:", email, userId);
-
-      const { data: invite, error: invErr } = await supabase
-        .from("map_invites")
-        .select("id, provider_id, status")
-        .eq("client_email", email)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      console.log("[Invite] invite lookup:", invite, "error:", invErr);
-
-      if (!invite) {
-        setStatus("error");
-        setErrorMsg("Invite not found or already used.");
-        return;
-      }
-
-      const { error: relErr } = await supabase
-        .from("provider_clients")
-        .insert({ provider_id: invite.provider_id, client_id: userId });
-
-      console.log("[Invite] insert error:", relErr);
-
-      if (relErr && !relErr.message?.includes("duplicate")) {
-        setStatus("error");
-        setErrorMsg("Could not connect. Please try again.");
-        return;
-      }
-
-      await supabase.from("map_invites")
-        .update({ status: "accepted" })
-        .eq("id", invite.id);
-
-      console.log("[Invite] done — relationship created");
-      sessionStorage.removeItem("pendingInviteToken");
-      setStatus("connected");
-      setTimeout(() => onConnected(), 1500);
-    };
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log("[Invite] getSession:", session?.user?.email ?? "no session");
-      if (session?.user?.id && session?.user?.email && !handled) {
-        connectByEmail(session.user.id, session.user.email);
-      }
-    });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[Invite] authChange:", event, session?.user?.email ?? "no session");
-      if (event === "SIGNED_IN" && session?.user?.id && session?.user?.email && !handled) {
-        connectByEmail(session.user.id, session.user.email);
+      if (event === "SIGNED_IN" && session?.user?.id) {
+        setTimeout(() => onConnected(), 800);
       }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,maxWidth:420,margin:"0 auto",width:"100%",textAlign:"center"}}>
-      <div style={{fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:24}}>What's Therapy</div>
-      {status === "waiting" && <div style={{fontSize:14,color:"#94a3b8"}}>Signing you in…</div>}
-      {status === "connecting" && <div style={{fontSize:14,color:"#94a3b8"}}>Connecting you to your provider…</div>}
-      {status === "connected" && (
-        <>
-          <div style={{fontSize:40,marginBottom:12}}>✓</div>
-          <div style={{fontSize:15,fontWeight:600,color:"#2dd4bf",marginBottom:6}}>Connected!</div>
-          <div style={{fontSize:13,color:"#94a3b8"}}>Taking you to your maps…</div>
-        </>
-      )}
-      {status === "error" && (
-        <>
-          <div style={{fontSize:13,color:"#fca5a5",marginBottom:16}}>{errorMsg}</div>
-          <button onClick={()=>window.location.href="/"}
-            style={{background:"#7F77DD",border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,padding:"10px 20px",cursor:"pointer",fontFamily:"inherit"}}>
-            Go to What's Therapy
-          </button>
-        </>
-      )}
+      <div style={{fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:16}}>What's Therapy</div>
+      <div style={{fontSize:14,color:"#94a3b8"}}>Connecting you to your provider…</div>
     </div>
   );
 }
-
 
 function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, session }) {
   return (
