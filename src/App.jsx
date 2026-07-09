@@ -2127,37 +2127,35 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
 // auth replaces this check in a later stage without changing this component's
 // props/shape.
 // ── Invite landing screen ─────────────────────────────────────────────────────
-function InviteScreen({ token, onConnected }) {
+// Shown when the user signs in via a provider invite magic link.
+// Looks up the pending invite by the user's email — no URL token needed.
+function InviteScreen({ onConnected }) {
   const [status, setStatus] = useState("waiting");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     let handled = false;
 
-    const connectInvite = async (userId) => {
+    const connectByEmail = async (userId, email) => {
       if (handled) return;
       handled = true;
       setStatus("connecting");
-      console.log("[Invite] connectInvite called, userId:", userId, "token:", token);
+      console.log("[Invite] connectByEmail:", email, userId);
 
       const { data: invite, error: invErr } = await supabase
         .from("map_invites")
         .select("id, provider_id, status")
-        .eq("token", token)
-        .single();
+        .eq("client_email", email)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       console.log("[Invite] invite lookup:", invite, "error:", invErr);
 
       if (!invite) {
         setStatus("error");
-        setErrorMsg("Invite not found or expired.");
-        return;
-      }
-
-      if (invite.status !== "pending") {
-        sessionStorage.removeItem("pendingInviteToken");
-        setStatus("connected");
-        setTimeout(() => onConnected(), 1500);
+        setErrorMsg("Invite not found or already used.");
         return;
       }
 
@@ -2165,7 +2163,7 @@ function InviteScreen({ token, onConnected }) {
         .from("provider_clients")
         .insert({ provider_id: invite.provider_id, client_id: userId });
 
-      console.log("[Invite] provider_clients insert error:", relErr);
+      console.log("[Invite] insert error:", relErr);
 
       if (relErr && !relErr.message?.includes("duplicate")) {
         setStatus("error");
@@ -2177,31 +2175,28 @@ function InviteScreen({ token, onConnected }) {
         .update({ status: "accepted" })
         .eq("id", invite.id);
 
-      console.log("[Invite] complete — relationship created");
+      console.log("[Invite] done — relationship created");
       sessionStorage.removeItem("pendingInviteToken");
-      sessionStorage.removeItem("pendingInviteIsNew");
       setStatus("connected");
       setTimeout(() => onConnected(), 1500);
     };
 
-    console.log("[Invite] Screen mounted, token:", token, "sessionStorage token:", sessionStorage.getItem("pendingInviteToken"));
-
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log("[Invite] getSession:", session?.user?.id ?? "no session");
-      if (session?.user?.id && !handled) {
-        connectInvite(session.user.id);
+      console.log("[Invite] getSession:", session?.user?.email ?? "no session");
+      if (session?.user?.id && session?.user?.email && !handled) {
+        connectByEmail(session.user.id, session.user.email);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[Invite] authStateChange:", event, session?.user?.id ?? "no session");
-      if (event === "SIGNED_IN" && session?.user?.id && !handled) {
-        connectInvite(session.user.id);
+      console.log("[Invite] authChange:", event, session?.user?.email ?? "no session");
+      if (event === "SIGNED_IN" && session?.user?.id && session?.user?.email && !handled) {
+        connectByEmail(session.user.id, session.user.email);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [token]);
+  }, []);
 
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,maxWidth:420,margin:"0 auto",width:"100%",textAlign:"center"}}>
@@ -2227,6 +2222,7 @@ function InviteScreen({ token, onConnected }) {
     </div>
   );
 }
+
 
 function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, session }) {
   return (
@@ -3742,18 +3738,41 @@ export default function WhatsTherapy() {
       setSession(newSession);
       if (event === "SIGNED_IN") {
         const newUserId = newSession?.user?.id ?? null;
+        const newUserEmail = newSession?.user?.email ?? null;
         const isActuallyNewSignIn = newUserId !== lastUserIdRef.current;
         lastUserIdRef.current = newUserId;
         if (newUserId) {
           supabase.from("user_profiles").select("is_author").eq("id", newUserId).maybeSingle()
             .then(({ data }) => { setIsAuthor(!!data?.is_author); });
         }
+
+        // Auto-connect any pending invite for this email
+        if (newUserId && newUserEmail && isActuallyNewSignIn) {
+          supabase.from("map_invites")
+            .select("id, provider_id")
+            .eq("client_email", newUserEmail)
+            .eq("status", "pending")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(async ({ data: invite }) => {
+              if (invite) {
+                console.log("[Invite] Auto-connecting pending invite:", invite.id);
+                const { error: relErr } = await supabase
+                  .from("provider_clients")
+                  .insert({ provider_id: invite.provider_id, client_id: newUserId });
+                if (!relErr || relErr.message?.includes("duplicate")) {
+                  await supabase.from("map_invites")
+                    .update({ status: "accepted" })
+                    .eq("id", invite.id);
+                  console.log("[Invite] Auto-connection complete");
+                }
+              }
+            });
+        }
+
         if (isActuallyNewSignIn) {
-          // Don't navigate away if InviteScreen is handling a connection
-          const hasPendingInvite = !!sessionStorage.getItem("pendingInviteToken");
-          if (!hasPendingInvite) {
-            setAppMode("loadingMyMap");
-          }
+          setAppMode("loadingMyMap");
         }
       } else if (event === "SIGNED_OUT") {
         lastUserIdRef.current = null;
@@ -5241,7 +5260,6 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
       {!authLoading && inviteToken && appMode === "landing" && (
         <InviteScreen
-          token={inviteToken}
           onConnected={() => {
             setInviteToken(null);
             setAppMode("loadingMyMap");
