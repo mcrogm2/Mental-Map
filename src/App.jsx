@@ -2248,7 +2248,7 @@ function EntryScreen({ onSignIn, onExplore }) {
 }
 
 
-function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, session }) {
+function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, onChooseProfile, session, userName }) {
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
       <div>
@@ -2305,6 +2305,17 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
             </div>
           </button>
         </div>
+
+        {session && (
+          <button onClick={onChooseProfile}
+            style={{background:"none",border:"1px solid #232752",borderRadius:12,padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",color:"#64748b",width:"100%",textAlign:"left",display:"flex",alignItems:"center",gap:10,fontSize:13}}>
+            <span>👤</span>
+            <span style={{fontWeight:600,color:"#94a3b8"}}>
+              {userName?.first ? `${userName.first}${userName.last ? " " + userName.last : ""}` : "My Profile"}
+            </span>
+            <span style={{marginLeft:"auto",fontSize:11,color:"#475569"}}>Edit name →</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -5316,7 +5327,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onChooseAuthorMaps={handleChooseAuthorMaps}
           onChooseProvider={handleChooseProvider}
           onChoosePatient={handleChoosePatient}
+          onChooseProfile={() => setAppMode("nameCapture")}
           session={session}
+          userName={userName}
         />
       )}
 
@@ -5364,8 +5377,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
           <button onClick={()=>setAppMode(session ? "landing" : "entryScreen")}
-            style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
-            What's Therapy
+            style={{fontWeight:600,fontSize:13,color:"#64748b",letterSpacing:"-0.01em",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",gap:4}}>
+            ← Back
           </button>
           {appMode === "builder" ? (
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
