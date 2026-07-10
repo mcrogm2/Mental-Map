@@ -3907,6 +3907,13 @@ export default function WhatsTherapy() {
         setAppMode("entryScreen");
       }
       if (session && window.location.hash.includes("access_token")) {
+        // If this page was opened by another tab (e.g. magic link opened a new tab),
+        // reload the original tab and close this one for a seamless experience.
+        if (window.opener && !window.opener.closed) {
+          window.opener.location.reload();
+          window.close();
+          return;
+        }
         setAppMode("loadingMyMap");
       }
     });
