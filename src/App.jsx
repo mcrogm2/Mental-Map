@@ -3802,11 +3802,9 @@ export default function WhatsTherapy() {
             .maybeSingle()
             .then(({ data }) => {
               if (data?.first_name || data?.no_name) {
-                // Has name or opted out — go straight to landing
                 setAppMode("loadingMyMap");
               } else {
-                // No name yet — show name capture, then landing after
-                nextModeAfterNameRef.current = "loadingMyMap";
+                nextModeAfterNameRef.current = "landing";
                 setAppMode("nameCapture");
               }
             });
@@ -5337,9 +5335,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           session={session}
           onComplete={(name) => {
             setUserName(name);
-            setAppMode("loadingMyMap");
+            setAppMode("landing");
           }}
-          onSkip={() => setAppMode("loadingMyMap")}
+          onSkip={() => setAppMode("landing")}
         />
       )}
       {appMode === "authorMaps" && (
