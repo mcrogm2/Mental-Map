@@ -2248,7 +2248,7 @@ function EntryScreen({ onSignIn, onExplore }) {
 }
 
 
-function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, onChooseProfile, session, userName }) {
+function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, onChooseProfile, onSignOut, session, userName }) {
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
       <div>
@@ -2314,6 +2314,12 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
               {userName?.first ? `${userName.first}${userName.last ? " " + userName.last : ""}` : "My Profile"}
             </span>
             <span style={{marginLeft:"auto",fontSize:11,color:"#475569"}}>Edit name →</span>
+          </button>
+        )}
+        {session && (
+          <button onClick={onSignOut}
+            style={{background:"none",border:"none",color:"#475569",fontSize:12,cursor:"pointer",fontFamily:"inherit",padding:"4px 0"}}>
+            Sign out
           </button>
         )}
       </div>
@@ -3770,13 +3776,10 @@ export default function WhatsTherapy() {
           .then(({ data }) => {
             if (data?.is_author) setIsAuthor(true);
             if (data?.first_name) setUserName({ first: data.first_name, last: data.last_name || "" });
-            if (data?.first_name || data?.no_name) {
-              lastUserIdRef.current = session.user.id;
-              setAppMode("loadingMyMap");
-            } else {
-              nextModeAfterNameRef.current = "loadingMyMap";
-              setAppMode("nameCapture");
-            }
+            // Only show name capture on fresh sign-in (SIGNED_IN handler).
+            // On page load for existing sessions, always go straight to landing.
+            lastUserIdRef.current = session.user.id;
+            setAppMode("loadingMyMap");
           });
         supabase.rpc("accept_invite").then(() => {});
       } else {
@@ -5328,6 +5331,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onChooseProvider={handleChooseProvider}
           onChoosePatient={handleChoosePatient}
           onChooseProfile={() => setAppMode("nameCapture")}
+          onSignOut={handleSignOut}
           session={session}
           userName={userName}
         />
