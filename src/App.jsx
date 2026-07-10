@@ -3936,57 +3936,6 @@ export default function WhatsTherapy() {
   const handleChooseProvider = () => { if (!session) { setAppMode("signin"); return; } setAppMode("provider"); };
   const handleChoosePatient = () => { if (!session) { setAppMode("signin"); return; } setAppMode("patient"); };
 
-  // Opens a provider-assigned map on the canvas (read-only)
-  const openPatientMapView = useCallback(async (assignedMap) => {
-    let steps = [];
-    if (assignedMap.process_id) {
-      const { data } = await supabase
-        .from("process_steps")
-        .select("node_id, position, step_summary")
-        .eq("process_id", assignedMap.process_id)
-        .order("position");
-      steps = data || [];
-    } else if (assignedMap.author_map_id) {
-      const { data } = await supabase
-        .from("author_map_steps")
-        .select("node_id, position, step_summary")
-        .eq("map_id", assignedMap.author_map_id)
-        .order("position");
-      steps = data || [];
-    }
-    // Reuse authorMapView mode — read-only canvas with gold arrows
-    setAuthorMapTitle(assignedMap.title);
-    setAuthorMapId(assignedMap.author_map_id || null);
-    setAuthorMapIds(new Set(steps.map(s => s.node_id)));
-    const notes = {};
-    steps.forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
-    setAuthorMapStepNotes(notes);
-    setAuthorMapEditing(false);
-    setAppMode("authorMapView");
-  }, []);
-
-  // Copies a provider-assigned map into the patient's My Maps
-  const copyPatientMap = useCallback(async (assignedMap) => {
-    if (!session) return;
-    let steps = [];
-    if (assignedMap.process_id) {
-      const { data } = await supabase
-        .from("process_steps")
-        .select("node_id, position, step_summary")
-        .eq("process_id", assignedMap.process_id)
-        .order("position");
-      steps = data || [];
-    } else if (assignedMap.author_map_id) {
-      const { data } = await supabase
-        .from("author_map_steps")
-        .select("node_id, position, step_summary")
-        .eq("map_id", assignedMap.author_map_id)
-        .order("position");
-      steps = data || [];
-    }
-    await copyFromAuthorMap(null, assignedMap.title, steps);
-  }, [session, copyFromAuthorMap]);
-
   // Opens an author map on the canvas in read-only view
   const openAuthorMapView = useCallback((map, steps) => {
     setAuthorMapTitle(map.title);
@@ -5360,6 +5309,57 @@ export default function WhatsTherapy() {
     setMyMapLoaded(true);
     setAppMode("myMap");
   }, [session]);
+
+  // Opens a provider-assigned map on the canvas (read-only)
+  const openPatientMapView = useCallback(async (assignedMap) => {
+    let steps = [];
+    if (assignedMap.process_id) {
+      const { data } = await supabase
+        .from("process_steps")
+        .select("node_id, position, step_summary")
+        .eq("process_id", assignedMap.process_id)
+        .order("position");
+      steps = data || [];
+    } else if (assignedMap.author_map_id) {
+      const { data } = await supabase
+        .from("author_map_steps")
+        .select("node_id, position, step_summary")
+        .eq("map_id", assignedMap.author_map_id)
+        .order("position");
+      steps = data || [];
+    }
+    setAuthorMapTitle(assignedMap.title);
+    setAuthorMapId(assignedMap.author_map_id || null);
+    setAuthorMapIds(new Set(steps.map(s => s.node_id)));
+    const notes = {};
+    steps.forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
+    setAuthorMapStepNotes(notes);
+    setAuthorMapEditing(false);
+    authorMapViewSourceRef.current = "patient";
+    setAppMode("authorMapView");
+  }, []);
+
+  // Copies a provider-assigned map into the patient's My Maps
+  const copyPatientMap = useCallback(async (assignedMap) => {
+    if (!session) return;
+    let steps = [];
+    if (assignedMap.process_id) {
+      const { data } = await supabase
+        .from("process_steps")
+        .select("node_id, position, step_summary")
+        .eq("process_id", assignedMap.process_id)
+        .order("position");
+      steps = data || [];
+    } else if (assignedMap.author_map_id) {
+      const { data } = await supabase
+        .from("author_map_steps")
+        .select("node_id, position, step_summary")
+        .eq("map_id", assignedMap.author_map_id)
+        .order("position");
+      steps = data || [];
+    }
+    await copyFromAuthorMap(null, assignedMap.title, steps);
+  }, [session, copyFromAuthorMap]);
 
   const generateInsight = async () => {
     const n = nodeById(selected); if(!n) return;
