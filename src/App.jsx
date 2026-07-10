@@ -3770,15 +3770,14 @@ export default function WhatsTherapy() {
       setSession(session);
       setAuthLoading(false);
       if (session?.user?.id) {
-        // Signed in — skip entry screen, go straight to landing
+        // Set lastUserIdRef synchronously so SIGNED_IN handler
+        // correctly detects this is NOT a new sign-in on new tab load
+        lastUserIdRef.current = session.user.id;
         sessionStorage.setItem("passedEntry", "1");
         supabase.from("user_profiles").select("is_author, first_name, last_name, no_name").eq("id", session.user.id).maybeSingle()
           .then(({ data }) => {
             if (data?.is_author) setIsAuthor(true);
             if (data?.first_name) setUserName({ first: data.first_name, last: data.last_name || "" });
-            // Only show name capture on fresh sign-in (SIGNED_IN handler).
-            // On page load for existing sessions, always go straight to landing.
-            lastUserIdRef.current = session.user.id;
             setAppMode("loadingMyMap");
           });
         supabase.rpc("accept_invite").then(() => {});
