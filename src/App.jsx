@@ -2043,7 +2043,7 @@ function MultiSelectSearch({ types, selectedIds, onToggle, naSelected, onToggleN
   );
 }
 
-function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSignOut }) {
+function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSignOut, userName }) {
   const [query, setQuery] = useState("");
 
   const q = query.trim().toLowerCase();
@@ -2104,6 +2104,11 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
       </div>
       {isSignedIn ? (
         <div style={{padding:"0 16px 14px"}}>
+          {userName?.first && (
+            <div style={{fontSize:12,color:"#94a3b8",marginBottom:4}}>
+              👤 {userName.first}{userName.last ? " " + userName.last : ""}
+            </div>
+          )}
           <button onClick={onSignOut}
             style={{background:"none",border:"none",color:"#64748b",fontSize:11.5,cursor:"pointer",fontFamily:"inherit",padding:0}}>
             Sign out
@@ -2126,7 +2131,58 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
 // is simulated by whether a My Map node set already exists in memory — real
 // auth replaces this check in a later stage without changing this component's
 // props/shape.
-// ── Invite landing screen ─────────────────────────────────────────────────────
+// ── Name capture screen ───────────────────────────────────────────────────────
+// Shown once after first sign-in. Saves first/last name to user_profiles.
+function NameCaptureScreen({ session, onComplete }) {
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSave = async () => {
+    if (!first.trim()) { setError("Please enter your first name."); return; }
+    setSaving(true);
+    const { error: err } = await supabase
+      .from("user_profiles")
+      .update({ first_name: first.trim(), last_name: last.trim() || null })
+      .eq("id", session.user.id);
+    if (err) { setError("Something went wrong. Please try again."); setSaving(false); return; }
+    onComplete({ first: first.trim(), last: last.trim() });
+  };
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,maxWidth:400,margin:"0 auto",width:"100%"}}>
+      <div style={{fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:8}}>Welcome to What's Therapy</div>
+      <div style={{fontSize:14,color:"#94a3b8",marginBottom:32,textAlign:"center"}}>
+        Before we get started, what's your name?
+      </div>
+      <div style={{width:"100%",display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+        <input
+          autoFocus
+          value={first}
+          onChange={e=>setFirst(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter") handleSave(); }}
+          placeholder="First name"
+          style={{width:"100%",background:"#11142A",border:"1px solid #7F77DD",borderRadius:10,color:"#e2e8f0",fontSize:14,padding:"12px 14px",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+        />
+        <input
+          value={last}
+          onChange={e=>setLast(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter") handleSave(); }}
+          placeholder="Last name (optional)"
+          style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:10,color:"#e2e8f0",fontSize:14,padding:"12px 14px",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+        />
+      </div>
+      {error && <div style={{fontSize:13,color:"#fca5a5",marginBottom:10}}>{error}</div>}
+      <button onClick={handleSave} disabled={saving || !first.trim()}
+        style={{width:"100%",background:"#7F77DD",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,padding:"13px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.6:1}}>
+        {saving ? "Saving…" : "Get started →"}
+      </button>
+    </div>
+  );
+}
+
+
 // Shown briefly while the magic link is being processed.
 // Connection is made automatically in the SIGNED_IN handler by email lookup.
 function InviteScreen({ onConnected }) {
@@ -2235,11 +2291,13 @@ function ProviderPortal({ session, onBack, processes, authorMaps }) {
       const enriched = await Promise.all((data || []).map(async (row) => {
         const { data: profile } = await supabase
           .from("user_profiles")
-          .select("id")
+          .select("first_name, last_name")
           .eq("id", row.client_id)
-          .single();
-        // Use Supabase admin to get email — fallback to client_id display
-        return { ...row, email: profile ? `Client ${row.client_id.slice(0,8)}…` : "Unknown" };
+          .maybeSingle();
+        const name = profile?.first_name
+          ? `${profile.first_name}${profile.last_name ? " " + profile.last_name : ""}`
+          : `Client ${row.client_id.slice(0,8)}…`;
+        return { ...row, email: name };
       }));
       setClients(enriched);
       setLoading(false);
@@ -3316,7 +3374,7 @@ function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDel
   );
 }
 
-function FilterWidget({ selectedIds, onToggle, onClear, isSignedIn, onSignOut }) {
+function FilterWidget({ selectedIds, onToggle, onClear, isSignedIn, onSignOut, userName }) {
   const [open, setOpen] = useState(false);
   const count = selectedIds.size;
 
@@ -3341,7 +3399,7 @@ function FilterWidget({ selectedIds, onToggle, onClear, isSignedIn, onSignOut })
         // pushing the panel off-screen to the left. A fixed top-right anchor
         // is predictable regardless of how the header wraps.
         <div style={{position:"fixed",top:64,right:12,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:300,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
-          <FilterPanel selectedIds={selectedIds} onToggle={onToggle} onClear={onClear} onClose={()=>setOpen(false)} isSignedIn={isSignedIn} onSignOut={onSignOut} />
+          <FilterPanel selectedIds={selectedIds} onToggle={onToggle} onClear={onClear} onClose={()=>setOpen(false)} isSignedIn={isSignedIn} onSignOut={onSignOut} userName={userName} />
         </div>
       )}
     </div>
@@ -3546,11 +3604,13 @@ export default function WhatsTherapy() {
   // is true only during the brief initial check for an existing session, so
   // the landing screen doesn't flash before we know someone's already signed
   // in (e.g. returning in the same browser later that day).
-  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView" | "provider" | "patient"
+  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView" | "provider" | "patient" | "nameCapture"
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAuthor, setIsAuthor] = useState(false);
+  const [userName, setUserName] = useState({ first: "", last: "" });
+  const nextModeAfterNameRef = useRef("myMap");
 
   // Author map view state — populated when entering authorMapView mode
   const [authorMapTitle, setAuthorMapTitle] = useState("");
@@ -3649,8 +3709,11 @@ export default function WhatsTherapy() {
       setAuthLoading(false);
       lastUserIdRef.current = session?.user?.id ?? null;
       if (session?.user?.id) {
-        supabase.from("user_profiles").select("is_author").eq("id", session.user.id).maybeSingle()
-          .then(({ data }) => { if (data?.is_author) setIsAuthor(true); });
+        supabase.from("user_profiles").select("is_author, first_name, last_name").eq("id", session.user.id).maybeSingle()
+          .then(({ data }) => {
+            if (data?.is_author) setIsAuthor(true);
+            if (data?.first_name) setUserName({ first: data.first_name, last: data.last_name || "" });
+          });
         supabase.rpc("accept_invite").then(() => {});
       }
       if (session && window.location.hash.includes("access_token")) {
@@ -3666,8 +3729,11 @@ export default function WhatsTherapy() {
         const isActuallyNewSignIn = newUserId !== lastUserIdRef.current;
         lastUserIdRef.current = newUserId;
         if (newUserId) {
-          supabase.from("user_profiles").select("is_author").eq("id", newUserId).maybeSingle()
-            .then(({ data }) => { setIsAuthor(!!data?.is_author); });
+          supabase.from("user_profiles").select("is_author, first_name, last_name").eq("id", newUserId).maybeSingle()
+            .then(({ data }) => {
+              setIsAuthor(!!data?.is_author);
+              if (data?.first_name) setUserName({ first: data.first_name, last: data.last_name || "" });
+            });
         }
         if (newUserId && newUserEmail) {
           supabase.rpc("accept_invite").then(() => {});
@@ -4670,7 +4736,23 @@ export default function WhatsTherapy() {
       if (list.length > 0) {
         setCurrentProcessId(list[0].id);
       }
-      setAppMode(mode => mode === "loadingMyMap" ? (list.length > 0 ? "myMap" : "questionnaire") : mode);
+      const targetMode = list.length > 0 ? "myMap" : "questionnaire";
+
+      // Check if user has a name — if not, capture it first
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("first_name, last_name")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (profile?.first_name) {
+        setUserName({ first: profile.first_name, last: profile.last_name || "" });
+        setAppMode(mode => mode === "loadingMyMap" ? targetMode : mode);
+      } else {
+        // No name yet — show name capture screen first
+        nextModeAfterNameRef.current = targetMode;
+        setAppMode(mode => mode === "loadingMyMap" ? "nameCapture" : mode);
+      }
     })();
     return () => { cancelled = true; };
   }, [session, refreshProcessList]);
@@ -5189,6 +5271,15 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       {appMode === "signin" && (
         <SignInScreen onCancel={()=>setAppMode("landing")} />
       )}
+      {appMode === "nameCapture" && (
+        <NameCaptureScreen
+          session={session}
+          onComplete={(name) => {
+            setUserName(name);
+            setAppMode(nextModeAfterNameRef.current);
+          }}
+        />
+      )}
       {appMode === "authorMaps" && (
         <AuthorMapsScreen
           onBack={()=>setAppMode("landing")}
@@ -5312,7 +5403,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           )}
           {appMode !== "builder" && (
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
-            <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} isSignedIn={!!session} onSignOut={handleSignOut} />
+            <FilterWidget selectedIds={filterIds} onToggle={toggleFilterId} onClear={clearFilter} isSignedIn={!!session} onSignOut={handleSignOut} userName={userName} />
             <SuggestWidget mode="floating" nodeLabel={selectedNode ? selectedNode.label : null} />
           </div>
           )}
