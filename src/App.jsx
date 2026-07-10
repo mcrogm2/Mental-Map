@@ -2133,7 +2133,7 @@ function FilterPanel({ selectedIds, onToggle, onClear, onClose, isSignedIn, onSi
 // props/shape.
 // ── Name capture screen ───────────────────────────────────────────────────────
 // Shown once after first sign-in. Saves first/last name to user_profiles.
-function NameCaptureScreen({ session, onComplete }) {
+function NameCaptureScreen({ session, onComplete, onSkip }) {
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2150,11 +2150,19 @@ function NameCaptureScreen({ session, onComplete }) {
     onComplete({ first: first.trim(), last: last.trim() });
   };
 
+  const handleSkip = async () => {
+    await supabase
+      .from("user_profiles")
+      .update({ no_name: true })
+      .eq("id", session.user.id);
+    onSkip();
+  };
+
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,maxWidth:400,margin:"0 auto",width:"100%"}}>
       <div style={{fontSize:22,fontWeight:700,color:"#f1f5f9",marginBottom:8}}>Welcome to What's Therapy</div>
-      <div style={{fontSize:14,color:"#94a3b8",marginBottom:32,textAlign:"center"}}>
-        Before we get started, what's your name?
+      <div style={{fontSize:14,color:"#94a3b8",marginBottom:32,textAlign:"center",lineHeight:1.6}}>
+        Would you like to add your name to your profile? This helps providers identify you.
       </div>
       <div style={{width:"100%",display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
         <input
@@ -2175,8 +2183,12 @@ function NameCaptureScreen({ session, onComplete }) {
       </div>
       {error && <div style={{fontSize:13,color:"#fca5a5",marginBottom:10}}>{error}</div>}
       <button onClick={handleSave} disabled={saving || !first.trim()}
-        style={{width:"100%",background:"#7F77DD",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,padding:"13px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.6:1}}>
-        {saving ? "Saving…" : "Get started →"}
+        style={{width:"100%",background:"#7F77DD",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,padding:"13px",cursor:"pointer",fontFamily:"inherit",opacity:saving?0.6:1,marginBottom:10}}>
+        {saving ? "Saving…" : "Save & get started →"}
+      </button>
+      <button onClick={handleSkip} disabled={saving}
+        style={{width:"100%",background:"none",border:"none",color:"#475569",fontSize:13,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>
+        Skip for now
       </button>
     </div>
   );
@@ -4738,18 +4750,20 @@ export default function WhatsTherapy() {
       }
       const targetMode = list.length > 0 ? "myMap" : "questionnaire";
 
-      // Check if user has a name — if not, capture it first
+      // Check if user has a name or has opted out of providing one
       const { data: profile } = await supabase
         .from("user_profiles")
-        .select("first_name, last_name")
+        .select("first_name, last_name, no_name")
         .eq("id", session.user.id)
         .maybeSingle();
 
-      if (profile?.first_name) {
-        setUserName({ first: profile.first_name, last: profile.last_name || "" });
+      if (profile?.first_name || profile?.no_name) {
+        if (profile?.first_name) {
+          setUserName({ first: profile.first_name, last: profile.last_name || "" });
+        }
         setAppMode(mode => mode === "loadingMyMap" ? targetMode : mode);
       } else {
-        // No name yet — show name capture screen first
+        // No name yet and hasn't opted out — show name capture screen
         nextModeAfterNameRef.current = targetMode;
         setAppMode(mode => mode === "loadingMyMap" ? "nameCapture" : mode);
       }
@@ -5278,6 +5292,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             setUserName(name);
             setAppMode(nextModeAfterNameRef.current);
           }}
+          onSkip={() => setAppMode(nextModeAfterNameRef.current)}
         />
       )}
       {appMode === "authorMaps" && (
