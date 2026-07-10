@@ -2423,7 +2423,7 @@ function PatientPortal({ session, onBack, onViewMap, onCopyMap }) {
 }
 
 // ── Provider Portal ───────────────────────────────────────────────────────────
-function ProviderPortal({ session, onBack, processes, authorMaps }) {
+function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap }) {
   const [view, setView] = useState("roster"); // "roster" | "client" | "invite" | "assign"
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -2434,6 +2434,7 @@ function ProviderPortal({ session, onBack, processes, authorMaps }) {
   const [assignLoading, setAssignLoading] = useState(false);
   const [confirmTerminate, setConfirmTerminate] = useState(null);
   const [authorMapsList, setAuthorMapsList] = useState([]);
+  const [assignSearch, setAssignSearch] = useState("");
 
   useEffect(() => {
     if (!session) return;
@@ -2543,18 +2544,39 @@ function ProviderPortal({ session, onBack, processes, authorMaps }) {
 
   // ── Assign screen ────────────────────────────────────────────────────────────
   if (view === "assign") {
+    const allMaps = [
+      ...processes.map(p => ({ id: p.id, title: p.title, type: "process" })),
+      ...authorMapsList.map(m => ({ id: m.id, title: m.title, type: "author" })),
+    ];
+    const filteredMaps = assignSearch.trim()
+      ? allMaps.filter(m => m.title.toLowerCase().includes(assignSearch.toLowerCase()))
+      : allMaps;
+    const filteredProcesses = filteredMaps.filter(m => m.type === "process");
+    const filteredAuthor = filteredMaps.filter(m => m.type === "author");
+
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
           <button onClick={()=>setView("client")} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Back</button>
           <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>Assign a map</span>
+          <button onClick={()=>{ setView("client"); onCreateMap && onCreateMap(); }}
+            style={{background:`${teal}0.1)`,border:`1px solid ${teal}0.4)`,borderRadius:20,color:"#2dd4bf",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+            + Create
+          </button>
         </div>
 
-        {processes.length > 0 && (
+        <input
+          value={assignSearch}
+          onChange={e=>setAssignSearch(e.target.value)}
+          placeholder="Search maps…"
+          style={{width:"100%",background:"#11142A",border:"1px solid #232752",borderRadius:10,color:"#e2e8f0",fontSize:13,padding:"9px 12px",fontFamily:"inherit",marginBottom:16,boxSizing:"border-box",outline:"none"}}
+        />
+
+        {filteredProcesses.length > 0 && (
           <>
             <div style={{fontSize:11,fontWeight:700,color:`${teal}0.8)`,letterSpacing:1,marginBottom:8}}>YOUR MAPS</div>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
-              {processes.map(p => (
+              {filteredProcesses.map(p => (
                 <button key={p.id} onClick={()=>assignMap(p.id, null)} disabled={assignLoading}
                   style={{background:"#11142A",border:`1px solid ${teal}0.25)`,borderRadius:10,padding:"11px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",fontSize:13,fontWeight:500}}>
                   {p.title}
@@ -2564,11 +2586,11 @@ function ProviderPortal({ session, onBack, processes, authorMaps }) {
           </>
         )}
 
-        {authorMapsList.length > 0 && (
+        {filteredAuthor.length > 0 && (
           <>
             <div style={{fontSize:11,fontWeight:700,color:"rgba(251,191,36,0.8)",letterSpacing:1,marginBottom:8}}>AUTHOR'S MAPS</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {authorMapsList.map(m => (
+              {filteredAuthor.map(m => (
                 <button key={m.id} onClick={()=>assignMap(null, m.id)} disabled={assignLoading}
                   style={{background:"#11142A",border:"1px solid rgba(251,191,36,0.25)",borderRadius:10,padding:"11px 14px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",textAlign:"left",fontSize:13,fontWeight:500,display:"flex",alignItems:"center",gap:8}}>
                   <span style={{color:"rgba(251,191,36,0.7)"}}>✦</span>{m.title}
@@ -2576,6 +2598,10 @@ function ProviderPortal({ session, onBack, processes, authorMaps }) {
               ))}
             </div>
           </>
+        )}
+
+        {filteredMaps.length === 0 && (
+          <div style={{fontSize:13,color:"#64748b"}}>No maps match your search.</div>
         )}
       </div>
     );
@@ -5518,6 +5544,10 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           onBack={()=>setAppMode("landing")}
           processes={processes}
           authorMaps={[]}
+          onCreateMap={() => {
+            setAppMode("landing");
+            setTimeout(() => handleChooseMyMap(), 50);
+          }}
         />
       )}
       {appMode === "patient" && (
