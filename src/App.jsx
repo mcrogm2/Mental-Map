@@ -2250,6 +2250,9 @@ function EntryScreen({ onSignIn, onExplore }) {
 
 function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, session }) {
   return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
+      <div>
+        <div style={{fontSize:22,fontWeight:600,color:"#f1f5f9",marginBottom:8}}>What's Therapy</div>
         <div style={{fontSize:14,color:"#94a3b8",maxWidth:360}}>
           Explore the full map, or build your own personalized map around what matters to you.
         </div>
