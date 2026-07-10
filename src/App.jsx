@@ -3651,13 +3651,7 @@ export default function WhatsTherapy() {
       if (session?.user?.id) {
         supabase.from("user_profiles").select("is_author").eq("id", session.user.id).maybeSingle()
           .then(({ data }) => { if (data?.is_author) setIsAuthor(true); });
-        // Check for pending invite on every page load for signed-in users
-        console.log("[Invite] Checking for pending invite on load:", session.user.email);
-        supabase.rpc("accept_invite")
-          .then(({ data, error }) => {
-            if (error) console.error("[Invite] accept_invite error:", error.message);
-            else console.log("[Invite] accept_invite result:", JSON.stringify(data));
-          });
+        supabase.rpc("accept_invite").then(() => {});
       }
       if (session && window.location.hash.includes("access_token")) {
         setAppMode("loadingMyMap");
@@ -3675,19 +3669,9 @@ export default function WhatsTherapy() {
           supabase.from("user_profiles").select("is_author").eq("id", newUserId).maybeSingle()
             .then(({ data }) => { setIsAuthor(!!data?.is_author); });
         }
-
-        // Always attempt invite connection on every sign-in.
-        // The function safely returns "No pending invite found" if nothing to do.
-        // This avoids any dependency on URL tokens which Supabase strips.
         if (newUserId && newUserEmail) {
-          console.log("[Invite] Checking for pending invite on sign-in:", newUserEmail);
-          supabase.rpc("accept_invite")
-            .then(({ data, error }) => {
-              if (error) console.error("[Invite] accept_invite error:", error.message);
-              else console.log("[Invite] accept_invite result:", JSON.stringify(data));
-            });
+          supabase.rpc("accept_invite").then(() => {});
         }
-
         if (isActuallyNewSignIn) {
           setAppMode("loadingMyMap");
         }
