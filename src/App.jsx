@@ -2327,6 +2327,101 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
   );
 }
 
+// ── Patient Portal ────────────────────────────────────────────────────────────
+function PatientPortal({ session, onBack, onViewMap, onCopyMap }) {
+  const [assignedMaps, setAssignedMaps] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!session) return;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("client_assigned_maps")
+        .select("id, process_id, author_map_id, assigned_at, provider_id")
+        .eq("client_id", session.user.id);
+
+      if (error) { setLoading(false); return; }
+
+      const enriched = await Promise.all((data || []).map(async (row) => {
+        let title = "Untitled map";
+        let isAuthorMap = false;
+
+        if (row.process_id) {
+          const { data: proc } = await supabase
+            .from("processes").select("title").eq("id", row.process_id).maybeSingle();
+          title = proc?.title || "Untitled map";
+        } else if (row.author_map_id) {
+          const { data: am } = await supabase
+            .from("author_maps").select("title").eq("id", row.author_map_id).maybeSingle();
+          title = am?.title || "Author's Map";
+          isAuthorMap = true;
+        }
+
+        const { data: profile } = await supabase
+          .from("user_profiles").select("first_name, last_name").eq("id", row.provider_id).maybeSingle();
+        const providerName = profile?.first_name
+          ? `${profile.first_name}${profile.last_name ? " " + profile.last_name : ""}`
+          : "Your provider";
+
+        return { ...row, title, isAuthorMap, providerName };
+      }));
+
+      setAssignedMaps(enriched);
+      setLoading(false);
+    })();
+  }, [session]);
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <button onClick={onBack}
+          style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
+          ← Back
+        </button>
+        <span style={{fontSize:17,fontWeight:700,color:"#f1f5f9",flex:1}}>🌱 Patient Portal</span>
+      </div>
+
+      {loading ? (
+        <div style={{color:"#64748b",fontSize:13}}>Loading your maps…</div>
+      ) : assignedMaps.length === 0 ? (
+        <div style={{fontSize:13,color:"#64748b",lineHeight:1.7}}>
+          No maps have been assigned to you yet. Your provider will share maps here once they're ready.
+        </div>
+      ) : (
+        <>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:14,lineHeight:1.6}}>
+            These maps were shared with you by your provider. You can view them or copy them to your own My Maps.
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {assignedMaps.map(m => (
+              <div key={m.id} style={{background:"#11142A",border:"1px solid rgba(251,113,133,0.2)",borderRadius:12,padding:"13px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                  {m.isAuthorMap && <span style={{fontSize:12,color:"rgba(251,191,36,0.7)"}}>✦</span>}
+                  <span style={{fontSize:13,fontWeight:600,color:"#e2e8f0",flex:1}}>{m.title}</span>
+                </div>
+                <div style={{fontSize:11,color:"#475569",marginBottom:10}}>
+                  From {m.providerName} · {new Date(m.assigned_at).toLocaleDateString()}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={() => onViewMap(m)}
+                    style={{background:"rgba(251,113,133,0.1)",border:"1px solid rgba(251,113,133,0.35)",borderRadius:20,color:"#fb7185",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                    View map
+                  </button>
+                  <button onClick={() => onCopyMap(m)}
+                    style={{background:"rgba(127,119,221,0.1)",border:"1px solid #7F77DD",borderRadius:20,color:"#a5b4fc",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                    ⎘ Copy to My Maps
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Provider Portal ───────────────────────────────────────────────────────────
 function ProviderPortal({ session, onBack, processes, authorMaps }) {
   const [view, setView] = useState("roster"); // "roster" | "client" | "invite" | "assign"
@@ -3679,7 +3774,7 @@ export default function WhatsTherapy() {
   const [authorMapIds, setAuthorMapIds] = useState(() => new Set());
   const [authorMapStepNotes, setAuthorMapStepNotes] = useState({});
 
-  // Author map editing state — only used when isAuthor=true in authorMapView
+  const authorMapViewSourceRef = useRef("authorMaps"); // "authorMaps" | "patient"
   const [authorMapEditing, setAuthorMapEditing] = useState(false);
   const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
   const [authorMapId, setAuthorMapId] = useState(null);
@@ -3841,6 +3936,57 @@ export default function WhatsTherapy() {
   const handleChooseProvider = () => { if (!session) { setAppMode("signin"); return; } setAppMode("provider"); };
   const handleChoosePatient = () => { if (!session) { setAppMode("signin"); return; } setAppMode("patient"); };
 
+  // Opens a provider-assigned map on the canvas (read-only)
+  const openPatientMapView = useCallback(async (assignedMap) => {
+    let steps = [];
+    if (assignedMap.process_id) {
+      const { data } = await supabase
+        .from("process_steps")
+        .select("node_id, position, step_summary")
+        .eq("process_id", assignedMap.process_id)
+        .order("position");
+      steps = data || [];
+    } else if (assignedMap.author_map_id) {
+      const { data } = await supabase
+        .from("author_map_steps")
+        .select("node_id, position, step_summary")
+        .eq("map_id", assignedMap.author_map_id)
+        .order("position");
+      steps = data || [];
+    }
+    // Reuse authorMapView mode — read-only canvas with gold arrows
+    setAuthorMapTitle(assignedMap.title);
+    setAuthorMapId(assignedMap.author_map_id || null);
+    setAuthorMapIds(new Set(steps.map(s => s.node_id)));
+    const notes = {};
+    steps.forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
+    setAuthorMapStepNotes(notes);
+    setAuthorMapEditing(false);
+    setAppMode("authorMapView");
+  }, []);
+
+  // Copies a provider-assigned map into the patient's My Maps
+  const copyPatientMap = useCallback(async (assignedMap) => {
+    if (!session) return;
+    let steps = [];
+    if (assignedMap.process_id) {
+      const { data } = await supabase
+        .from("process_steps")
+        .select("node_id, position, step_summary")
+        .eq("process_id", assignedMap.process_id)
+        .order("position");
+      steps = data || [];
+    } else if (assignedMap.author_map_id) {
+      const { data } = await supabase
+        .from("author_map_steps")
+        .select("node_id, position, step_summary")
+        .eq("map_id", assignedMap.author_map_id)
+        .order("position");
+      steps = data || [];
+    }
+    await copyFromAuthorMap(null, assignedMap.title, steps);
+  }, [session, copyFromAuthorMap]);
+
   // Opens an author map on the canvas in read-only view
   const openAuthorMapView = useCallback((map, steps) => {
     setAuthorMapTitle(map.title);
@@ -3850,6 +3996,7 @@ export default function WhatsTherapy() {
     steps.forEach(s => { if (s.step_summary) notes[s.node_id] = s.step_summary; });
     setAuthorMapStepNotes(notes);
     setAuthorMapEditing(false);
+    authorMapViewSourceRef.current = "authorMaps";
     setAppMode("authorMapView");
   }, []);
   const handleChooseMyMap = () => {
@@ -5373,6 +5520,14 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           authorMaps={[]}
         />
       )}
+      {appMode === "patient" && (
+        <PatientPortal
+          session={session}
+          onBack={()=>setAppMode("landing")}
+          onViewMap={openPatientMapView}
+          onCopyMap={copyPatientMap}
+        />
+      )}
 
       {(appMode === "explore" || appMode === "myMap" || appMode === "builder" || appMode === "authorMapView") && (
         <>
@@ -5399,9 +5554,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             </div>
           ) : appMode === "authorMapView" ? (
             <div style={{display:"flex",alignItems:"center",gap:10,marginLeft:"auto"}}>
-              <button onClick={()=>setAppMode("authorMaps")}
+              <button onClick={()=>setAppMode(authorMapViewSourceRef.current)}
                 style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>
-                ← Author's Maps
+                ← {authorMapViewSourceRef.current === "patient" ? "Patient Portal" : "Author's Maps"}
               </button>
               <span style={{fontSize:14,fontWeight:700,color:"#fbbf24"}}>✦ {authorMapTitle}</span>
               {authorMapEditing ? (
