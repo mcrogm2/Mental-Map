@@ -3651,10 +3651,8 @@ export default function WhatsTherapy() {
       if (session?.user?.id) {
         supabase.from("user_profiles").select("is_author").eq("id", session.user.id).maybeSingle()
           .then(({ data }) => { if (data?.is_author) setIsAuthor(true); });
-      }
-      // If already signed in and an invite token is present, connect immediately
-      if (session?.user?.id && session?.user?.email && initialInviteToken) {
-        console.log("[Invite] Already signed in, calling accept_invite");
+        // Check for pending invite on every page load for signed-in users
+        console.log("[Invite] Checking for pending invite on load:", session.user.email);
         supabase.rpc("accept_invite")
           .then(({ data, error }) => {
             if (error) console.error("[Invite] accept_invite error:", error.message);
@@ -3678,11 +3676,11 @@ export default function WhatsTherapy() {
             .then(({ data }) => { setIsAuthor(!!data?.is_author); });
         }
 
-        // Always attempt invite connection when an invite token is present —
-        // don't gate on isActuallyNewSignIn since getSession() pre-sets
-        // lastUserIdRef causing the "new sign in" check to fail for returning users.
-        if (newUserId && newUserEmail && initialInviteToken) {
-          console.log("[Invite] Calling accept_invite for:", newUserEmail);
+        // Always attempt invite connection on every sign-in.
+        // The function safely returns "No pending invite found" if nothing to do.
+        // This avoids any dependency on URL tokens which Supabase strips.
+        if (newUserId && newUserEmail) {
+          console.log("[Invite] Checking for pending invite on sign-in:", newUserEmail);
           supabase.rpc("accept_invite")
             .then(({ data, error }) => {
               if (error) console.error("[Invite] accept_invite error:", error.message);
