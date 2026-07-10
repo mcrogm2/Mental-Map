@@ -2215,7 +2215,39 @@ function InviteScreen({ onConnected }) {
   );
 }
 
-function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, session }) {
+// ── Entry Screen ──────────────────────────────────────────────────────────────
+// The very first screen everyone sees. Two paths: sign in or just explore.
+function EntryScreen({ onSignIn, onExplore }) {
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:32,padding:24,textAlign:"center"}}>
+      <div>
+        <div style={{fontSize:28,fontWeight:700,color:"#f1f5f9",marginBottom:10,letterSpacing:"-0.02em"}}>
+          What's Therapy
+        </div>
+        <div style={{fontSize:15,color:"#94a3b8",maxWidth:320,lineHeight:1.7,margin:"0 auto"}}>
+          An interactive map of therapy modalities, concepts, and skills.
+        </div>
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:340}}>
+        <button onClick={onSignIn}
+          style={{background:"#7F77DD",border:"none",borderRadius:14,padding:"16px 20px",cursor:"pointer",fontFamily:"inherit",color:"#fff",fontSize:15,fontWeight:700,letterSpacing:"-0.01em"}}>
+          Sign in / Create account
+        </button>
+        <button onClick={onExplore}
+          style={{background:"#11142A",border:"1px solid #232752",borderRadius:14,padding:"16px 20px",cursor:"pointer",fontFamily:"inherit",color:"#94a3b8",fontSize:15,fontWeight:600}}>
+          Just Explore
+        </button>
+      </div>
+
+      <div style={{fontSize:12,color:"#334155",maxWidth:300,lineHeight:1.6}}>
+        Sign in to save maps, connect with a provider, and access curated content.
+      </div>
+    </div>
+  );
+}
+
+
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
       <div>
@@ -3616,7 +3648,7 @@ export default function WhatsTherapy() {
   // is true only during the brief initial check for an existing session, so
   // the landing screen doesn't flash before we know someone's already signed
   // in (e.g. returning in the same browser later that day).
-  const [appMode, setAppMode] = useState("landing"); // "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView" | "provider" | "patient" | "nameCapture"
+  const [appMode, setAppMode] = useState("entryScreen"); // "entryScreen" | "landing" | "explore" | "signin" | "questionnaire" | "myMap" | "authorMaps" | "authorMapView" | "provider" | "patient" | "nameCapture"
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -3727,6 +3759,11 @@ export default function WhatsTherapy() {
             if (data?.first_name) setUserName({ first: data.first_name, last: data.last_name || "" });
           });
         supabase.rpc("accept_invite").then(() => {});
+        // Already signed in — go straight to landing page
+        setAppMode("loadingMyMap");
+      } else {
+        // Not signed in — show entry screen
+        setAppMode("entryScreen");
       }
       if (session && window.location.hash.includes("access_token")) {
         setAppMode("loadingMyMap");
@@ -3751,7 +3788,21 @@ export default function WhatsTherapy() {
           supabase.rpc("accept_invite").then(() => {});
         }
         if (isActuallyNewSignIn) {
-          setAppMode("loadingMyMap");
+          // Check if user needs name capture before proceeding
+          supabase.from("user_profiles")
+            .select("first_name, no_name")
+            .eq("id", newUserId)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data?.first_name || data?.no_name) {
+                // Has name or opted out — go straight to landing
+                setAppMode("loadingMyMap");
+              } else {
+                // No name yet — show name capture, then landing after
+                nextModeAfterNameRef.current = "loadingMyMap";
+                setAppMode("nameCapture");
+              }
+            });
         }
       } else if (event === "SIGNED_OUT") {
         lastUserIdRef.current = null;
@@ -3760,7 +3811,7 @@ export default function WhatsTherapy() {
         setMyMapStepNotes({});
         setMyMapStepOrder({});
         setMyMapLoaded(false);
-        setAppMode("landing");
+        setAppMode("entryScreen");
       }
     });
 
@@ -4748,25 +4799,8 @@ export default function WhatsTherapy() {
       if (list.length > 0) {
         setCurrentProcessId(list[0].id);
       }
-      const targetMode = list.length > 0 ? "myMap" : "questionnaire";
-
-      // Check if user has a name or has opted out of providing one
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("first_name, last_name, no_name")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (profile?.first_name || profile?.no_name) {
-        if (profile?.first_name) {
-          setUserName({ first: profile.first_name, last: profile.last_name || "" });
-        }
-        setAppMode(mode => mode === "loadingMyMap" ? targetMode : mode);
-      } else {
-        // No name yet and hasn't opted out — show name capture screen
-        nextModeAfterNameRef.current = targetMode;
-        setAppMode(mode => mode === "loadingMyMap" ? "nameCapture" : mode);
-      }
+      // Go to landing page — user sees all options from there
+      setAppMode(mode => mode === "loadingMyMap" ? "landing" : mode);
     })();
     return () => { cancelled = true; };
   }, [session, refreshProcessList]);
@@ -5249,12 +5283,18 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         }
       `}</style>
 
-      {(authLoading || appMode === "loadingMyMap") && (
+      {(appMode === "loadingMyMap") && (
         <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{width:24,height:24,border:"2px solid #232752",borderTopColor:"#7F77DD",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
         </div>
       )}
 
+      {!authLoading && appMode === "entryScreen" && (
+        <EntryScreen
+          onSignIn={() => setAppMode("signin")}
+          onExplore={() => setAppMode("landing")}
+        />
+      )}
       {!authLoading && inviteToken && appMode === "landing" && (
         <InviteScreen
           onConnected={() => {
@@ -5290,9 +5330,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           session={session}
           onComplete={(name) => {
             setUserName(name);
-            setAppMode(nextModeAfterNameRef.current);
+            setAppMode("loadingMyMap");
           }}
-          onSkip={() => setAppMode(nextModeAfterNameRef.current)}
+          onSkip={() => setAppMode("loadingMyMap")}
         />
       )}
       {appMode === "authorMaps" && (
@@ -5318,7 +5358,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
       {/* Header */}
       <div style={{display:"flex",flexDirection:"column",background:"#0A0C1A",borderBottom:"1px solid #1C2040",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",padding:"10px 20px 4px",gap:12}}>
-          <button onClick={()=>setAppMode("landing")}
+          <button onClick={()=>setAppMode(session ? "landing" : "entryScreen")}
             style={{fontWeight:600,fontSize:14,color:"#f1f5f9",letterSpacing:"-0.01em",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
             What's Therapy
           </button>
