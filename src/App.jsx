@@ -3649,11 +3649,7 @@ export default function WhatsTherapy() {
   // is true only during the brief initial check for an existing session, so
   // the landing screen doesn't flash before we know someone's already signed
   // in (e.g. returning in the same browser later that day).
-  const [appMode, setAppMode] = useState(() => {
-    // If user has already passed the entry screen this session, go to landing.
-    // Otherwise show the entry screen.
-    return sessionStorage.getItem("passedEntry") ? "landing" : "entryScreen";
-  });
+  const [appMode, setAppMode] = useState("loadingEntry"); // start in loading state, route after auth check
   const [myMapIds, setMyMapIds] = useState(() => new Set());
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -3757,12 +3753,12 @@ export default function WhatsTherapy() {
       setSession(session);
       setAuthLoading(false);
       if (session?.user?.id) {
+        // Signed in — skip entry screen, go straight to landing
         sessionStorage.setItem("passedEntry", "1");
         supabase.from("user_profiles").select("is_author, first_name, last_name, no_name").eq("id", session.user.id).maybeSingle()
           .then(({ data }) => {
             if (data?.is_author) setIsAuthor(true);
             if (data?.first_name) setUserName({ first: data.first_name, last: data.last_name || "" });
-            // For already-signed-in users: check name now since SIGNED_IN won't re-fire
             if (data?.first_name || data?.no_name) {
               lastUserIdRef.current = session.user.id;
               setAppMode("loadingMyMap");
@@ -3772,6 +3768,9 @@ export default function WhatsTherapy() {
             }
           });
         supabase.rpc("accept_invite").then(() => {});
+      } else {
+        // Not signed in — show entry screen
+        setAppMode("entryScreen");
       }
       if (session && window.location.hash.includes("access_token")) {
         setAppMode("loadingMyMap");
@@ -3785,7 +3784,6 @@ export default function WhatsTherapy() {
         const newUserEmail = newSession?.user?.email ?? null;
         const isActuallyNewSignIn = newUserId !== lastUserIdRef.current;
         lastUserIdRef.current = newUserId;
-        sessionStorage.setItem("passedEntry", "1");
         if (newUserId) {
           supabase.from("user_profiles").select("is_author, first_name, last_name").eq("id", newUserId).maybeSingle()
             .then(({ data }) => {
@@ -3815,7 +3813,6 @@ export default function WhatsTherapy() {
         }
       } else if (event === "SIGNED_OUT") {
         lastUserIdRef.current = null;
-        sessionStorage.removeItem("passedEntry");
         setIsAuthor(false);
         setMyMapIds(new Set());
         setMyMapStepNotes({});
@@ -5293,7 +5290,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         }
       `}</style>
 
-      {(appMode === "loadingMyMap") && (
+      {(appMode === "loadingMyMap" || appMode === "loadingEntry") && (
         <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{width:24,height:24,border:"2px solid #232752",borderTopColor:"#7F77DD",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
         </div>
@@ -5301,8 +5298,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
 
       {!authLoading && appMode === "entryScreen" && (
         <EntryScreen
-          onSignIn={() => { sessionStorage.setItem("passedEntry","1"); setAppMode("signin"); }}
-          onExplore={() => { sessionStorage.setItem("passedEntry","1"); setAppMode("landing"); }}
+          onSignIn={() => setAppMode("signin")}
+          onExplore={() => setAppMode("landing")}
         />
       )}
       {!authLoading && inviteToken && appMode === "landing" && (
