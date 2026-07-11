@@ -2453,25 +2453,14 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
           .eq("id", row.client_id)
           .maybeSingle();
 
-        // Get client email from map_invites (stored when provider sent the invite)
-        const { data: invite } = await supabase
-          .from("map_invites")
-          .select("client_email")
-          .eq("provider_id", session.user.id)
-          .eq("status", "accepted")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
         const firstName = profile?.first_name || null;
         const lastName = profile?.last_name || null;
-        const clientEmail = invite?.client_email || null;
 
         const displayName = firstName
           ? `${firstName}${lastName ? " " + lastName : ""}`
-          : clientEmail || `User ${row.client_id.slice(0,8)}`;
+          : `User ${row.client_id.slice(0,8)}`;
 
-        return { ...row, email: displayName, firstName, lastName, clientEmail };
+        return { ...row, email: displayName, firstName, lastName, clientEmail: null };
       }));
       setClients(enriched);
       setClients(enriched);
