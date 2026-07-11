@@ -2449,18 +2449,19 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
       const enriched = await Promise.all((data || []).map(async (row) => {
         const { data: profile } = await supabase
           .from("user_profiles")
-          .select("first_name, last_name")
+          .select("first_name, last_name, email")
           .eq("id", row.client_id)
           .maybeSingle();
 
         const firstName = profile?.first_name || null;
         const lastName = profile?.last_name || null;
+        const clientEmail = profile?.email || null;
 
         const displayName = firstName
           ? `${firstName}${lastName ? " " + lastName : ""}`
-          : `User ${row.client_id.slice(0,8)}`;
+          : clientEmail || `User ${row.client_id.slice(0,8)}`;
 
-        return { ...row, email: displayName, firstName, lastName, clientEmail: null };
+        return { ...row, email: displayName, firstName, lastName, clientEmail };
       }));
       setClients(enriched);
       setClients(enriched);
@@ -2626,14 +2627,11 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
           <button onClick={()=>setView("roster")} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Clients</button>
           <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:700,color:"#f1f5f9"}}>
+            <div style={{fontSize:15,fontWeight:700,color:"#f1f5f9"}}>
               {selectedClient.firstName
-                ? `${selectedClient.firstName}${selectedClient.lastName ? " " + selectedClient.lastName : ""}`
+                ? `${selectedClient.firstName}${selectedClient.lastName ? " " + selectedClient.lastName : ""}${selectedClient.clientEmail ? " - " + selectedClient.clientEmail : ""}`
                 : selectedClient.clientEmail || selectedClient.email}
             </div>
-            {selectedClient.firstName && selectedClient.clientEmail && (
-              <div style={{fontSize:12,color:"#64748b"}}>{selectedClient.clientEmail}</div>
-            )}
           </div>
           <button onClick={()=>setView("assign")}
             style={{background:`${teal}0.1)`,border:`1px solid ${teal}0.4)`,borderRadius:20,color:"#2dd4bf",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
