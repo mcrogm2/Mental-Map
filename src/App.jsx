@@ -2453,6 +2453,8 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
           .eq("id", row.client_id)
           .maybeSingle();
 
+        console.log("[Provider] client profile:", row.client_id, profile);
+
         const firstName = profile?.first_name || null;
         const lastName = profile?.last_name || null;
         const clientEmail = profile?.email || null;
@@ -2463,7 +2465,6 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
 
         return { ...row, email: displayName, firstName, lastName, clientEmail };
       }));
-      setClients(enriched);
       setClients(enriched);
       setLoading(false);
     })();
