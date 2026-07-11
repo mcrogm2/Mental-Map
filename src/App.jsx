@@ -2452,11 +2452,28 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
           .select("first_name, last_name")
           .eq("id", row.client_id)
           .maybeSingle();
-        const name = profile?.first_name
-          ? `${profile.first_name}${profile.last_name ? " " + profile.last_name : ""}`
-          : `Client ${row.client_id.slice(0,8)}…`;
-        return { ...row, email: name };
+
+        // Get client email from map_invites (stored when provider sent the invite)
+        const { data: invite } = await supabase
+          .from("map_invites")
+          .select("client_email")
+          .eq("provider_id", session.user.id)
+          .eq("status", "accepted")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const firstName = profile?.first_name || null;
+        const lastName = profile?.last_name || null;
+        const clientEmail = invite?.client_email || null;
+
+        const displayName = firstName
+          ? `${firstName}${lastName ? " " + lastName : ""}`
+          : clientEmail || `User ${row.client_id.slice(0,8)}`;
+
+        return { ...row, email: displayName, firstName, lastName, clientEmail };
       }));
+      setClients(enriched);
       setClients(enriched);
       setLoading(false);
     })();
@@ -2508,12 +2525,18 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
   const assignMap = async (processId, authorMapId) => {
     if (!selectedClient || !session) return;
     setAssignLoading(true);
-    await supabase.from("client_assigned_maps").insert({
+    const { error } = await supabase.from("client_assigned_maps").insert({
       provider_id: session.user.id,
       client_id: selectedClient.client_id,
       process_id: processId || null,
       author_map_id: authorMapId || null,
     });
+    if (error) {
+      console.error("assignMap error:", error.message, error.details);
+      alert(`Failed to assign map: ${error.message}`);
+      setAssignLoading(false);
+      return;
+    }
     await loadClientMaps(selectedClient);
     setAssignLoading(false);
     setView("client");
@@ -2611,9 +2634,18 @@ function ProviderPortal({ session, onBack, processes, authorMaps, onCreateMap })
   if (view === "client" && selectedClient) {
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",padding:24,overflowY:"auto",maxWidth:520,margin:"0 auto",width:"100%"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
           <button onClick={()=>setView("roster")} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:13,fontFamily:"inherit",padding:0}}>← Clients</button>
-          <span style={{fontSize:16,fontWeight:700,color:"#f1f5f9",flex:1}}>{selectedClient.email}</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:700,color:"#f1f5f9"}}>
+              {selectedClient.firstName
+                ? `${selectedClient.firstName}${selectedClient.lastName ? " " + selectedClient.lastName : ""}`
+                : selectedClient.clientEmail || selectedClient.email}
+            </div>
+            {selectedClient.firstName && selectedClient.clientEmail && (
+              <div style={{fontSize:12,color:"#64748b"}}>{selectedClient.clientEmail}</div>
+            )}
+          </div>
           <button onClick={()=>setView("assign")}
             style={{background:`${teal}0.1)`,border:`1px solid ${teal}0.4)`,borderRadius:20,color:"#2dd4bf",fontSize:12,fontWeight:600,padding:"6px 14px",cursor:"pointer",fontFamily:"inherit"}}>
             + Assign map
@@ -3936,17 +3968,19 @@ export default function WhatsTherapy() {
           supabase.rpc("accept_invite").then(() => {});
         }
         if (isActuallyNewSignIn) {
-          // Check if user needs name capture before proceeding
+          // Navigate immediately — don't wait for profile query
+          setAppMode("loadingMyMap");
+          // Check name in parallel — intercept only if name capture needed
           supabase.from("user_profiles")
             .select("first_name, no_name")
             .eq("id", newUserId)
             .maybeSingle()
             .then(({ data }) => {
-              if (data?.first_name || data?.no_name) {
-                setAppMode("loadingMyMap");
-              } else {
+              if (!data?.first_name && !data?.no_name) {
                 nextModeAfterNameRef.current = "landing";
-                setAppMode("nameCapture");
+                setAppMode(mode =>
+                  mode === "loadingMyMap" || mode === "landing" ? "nameCapture" : mode
+                );
               }
             });
         }
@@ -4939,16 +4973,15 @@ export default function WhatsTherapy() {
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
-    (async () => {
-      const list = await refreshProcessList(session.user.id);
+    // Load processes in background — don't block navigation to landing
+    refreshProcessList(session.user.id).then(list => {
       if (cancelled) return;
       setProcessesLoaded(true);
       if (list.length > 0) {
         setCurrentProcessId(list[0].id);
       }
-      // Go to landing page — user sees all options from there
       setAppMode(mode => mode === "loadingMyMap" ? "landing" : mode);
-    })();
+    });
     return () => { cancelled = true; };
   }, [session, refreshProcessList]);
 
