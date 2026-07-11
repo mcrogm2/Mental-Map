@@ -3886,11 +3886,12 @@ export default function WhatsTherapy() {
   const authorMapViewSourceRef = useRef("authorMaps"); // "authorMaps" | "patient"
   const authorMapIdRef = useRef(null);
 
-  // Keep authorMapIdRef in sync
-  useEffect(() => { authorMapIdRef.current = authorMapId; }, [authorMapId]);
   const [authorMapEditing, setAuthorMapEditing] = useState(false);
   const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
   const [authorMapId, setAuthorMapId] = useState(null);
+
+  // Keep authorMapIdRef in sync — must be after authorMapId declaration
+  useEffect(() => { authorMapIdRef.current = authorMapId; }, [authorMapId]);
 
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
