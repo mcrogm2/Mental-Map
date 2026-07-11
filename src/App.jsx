@@ -4786,26 +4786,37 @@ export default function WhatsTherapy() {
     }, 80));
 
     // Stage 3 (220ms): rescale to cluster-relative sizes + gather positions.
-    // Uses the multi-seed compute functions with the clicked node as the
-    // only seed, then constrained to `cluster` above — same math as a plain
-    // single-node click when no filter is active (cluster === full neighborhood
-    // in that case), but respects the filter's visible set when one is active.
+    // In authorMapView, skip gathering — keep nodes exactly where the author placed them.
     selectionTimersRef.current.push(setTimeout(() => {
       const clusterSizes = filterIdsRef.current.size > 0
         ? computeMultiClusterSizes(new Set(clusterArr), NODES, EDGES, DEGREE_RANGES)
         : computeClusterSizes(id, NODES, EDGES, DEGREE_RANGES);
-      const gatheredPos  = filterIdsRef.current.size > 0
-        ? computeMultiGatheredPositions(new Set(clusterArr), NODES, EDGES)
-        : computeGatheredPositions(id, NODES, EDGES);
-      const resize = {};
-      NODES.forEach(n => {
-        resize[n.id] = {
-          radius: clusterSizes[n.id],
-          x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
-          y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
-        };
-      });
-      animator.setTargets(resize);
+
+      if (appMode === "authorMapView") {
+        // Just resize — no position change
+        const resize = {};
+        NODES.forEach(n => {
+          resize[n.id] = {
+            radius: clusterSizes[n.id],
+            x: getNodePos(n.id).x,
+            y: getNodePos(n.id).y,
+          };
+        });
+        animator.setTargets(resize);
+      } else {
+        const gatheredPos = filterIdsRef.current.size > 0
+          ? computeMultiGatheredPositions(new Set(clusterArr), NODES, EDGES)
+          : computeGatheredPositions(id, NODES, EDGES);
+        const resize = {};
+        NODES.forEach(n => {
+          resize[n.id] = {
+            radius: clusterSizes[n.id],
+            x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
+            y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
+          };
+        });
+        animator.setTargets(resize);
+      }
     }, 220));
 
     // Stage 4 (300ms): recenter viewbox to the (possibly filter-constrained) cluster
