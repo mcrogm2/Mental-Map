@@ -754,6 +754,51 @@ const NODES = [
    summary:"Systematically moving attention through the body, noticing sensation without judgment.",
    content:"Builds interoceptive awareness — often disrupted by trauma and chronic stress.\n\nUsed in MBSR, somatic therapy, and sleep protocols. Can be done in 5 minutes or 45.",
    links:[]},
+
+  {id:"monkey-brain",  label:"Lost in thought\n(Monkey brain)", type:"challenge", x:900,y:175,
+   summary:"The restless, wandering mind that jumps from thought to thought, pulling you out of the present.",
+   content:"'Monkey brain' describes the mind's default tendency to wander — replaying the past, rehearsing the future, narrating experiences rather than living them.\n\nResearch shows the mind wanders nearly 47% of waking hours. This isn't a personal flaw — it's the brain's default mode network doing what it evolved to do.\n\nThe problem: mind-wandering predicts unhappiness more strongly than the activity itself. A mind at home in the present is a happier mind.\n\nEntry points: mindfulness trains the return from wandering, RAIN method works with whatever you find when you land, defusion reduces the stickiness of thoughts.",
+   links:["mindfulness","defusion","rumination","rain-method","mindfulness-meditation"]},
+
+  {id:"primary-emotion", label:"Primary\nemotion", type:"concept", x:410,y:530,
+   summary:"The raw, immediate emotional response that arises first — before interpretation or judgment.",
+   content:"Primary emotions are direct, biological responses to events: the sadness of loss, the fear of threat, the joy of connection.\n\nThey tend to be short-lived when allowed full expression — usually lasting 90 seconds to a few minutes if not suppressed or amplified.\n\nKey insight: primary emotions carry information. Sadness signals loss. Fear signals danger. Anger signals a boundary violation. They're meant to move through us, not stay.\n\nOften obscured by secondary emotions that layer on top — identifying which is primary helps determine the right response.",
+   links:["secondary-emotion","emotion-reg","self-compassion","willingness"]},
+
+  {id:"secondary-emotion", label:"Secondary\nemotion", type:"concept", x:475,y:540,
+   summary:"An emotional reaction to an emotion — how you feel about what you're already feeling.",
+   content:"Secondary emotions are reactions layered on top of primary ones: shame about feeling sad, anxiety about feeling angry, disgust at feeling needy.\n\nThey're often the emotions we're most aware of because they're louder and more persistent — but they're not the root.\n\nUnpacking the layers: 'I feel angry' (secondary) → 'underneath that I feel hurt' (primary) → this is where healing happens.\n\nDBT's emotion regulation and IFS both help identify which parts are generating secondary reactions and why.",
+   links:["primary-emotion","emotion-reg","rumination","defusion"]},
+
+  {id:"willingness",   label:"Willingness",       type:"concept", x:345,y:320,
+   summary:"Choosing to make room for difficult inner experiences rather than fighting or avoiding them.",
+   content:"Willingness is a core concept in ACT — not resignation or approval, but an active choice to stop struggling against what's already here.\n\nThe metaphor: quicksand. Struggling sinks you deeper. Willingness means going still and spreading your weight.\n\nIt differs from wanting: you don't have to want the anxiety, grief, or discomfort — you just stop fighting it. Fighting costs energy and rarely works.\n\nWillingness creates space for values-based action even in the presence of pain. It's the engine of psychological flexibility.",
+   links:["act","defusion","mindfulness","distress-tol","primary-emotion"]},
+
+  {id:"distress-tol-concept", label:"Distress\ntolerance", type:"concept", x:340,y:530,
+   summary:"The capacity to withstand painful emotions and situations without being overwhelmed or making things worse.",
+   content:"Distress tolerance is both a skill set and a core capacity — the ability to sit with pain without immediately acting to reduce it.\n\nLow distress tolerance drives many impulsive behaviors: substance use, self-harm, rage, avoidance. Not because people are weak, but because the pain feels genuinely unbearable.\n\nBuilding tolerance means gradually increasing the window of what you can hold — exposure, mindfulness practice, and somatic regulation all expand this window over time.\n\nRelated to willingness (ACT), radical acceptance (DBT), and the window of tolerance from somatic work.",
+   links:["willingness","emotion-reg","emotional-states","distress-tol","trauma"]},
+
+  {id:"emotional-states", label:"Emotional\nstates", type:"concept", x:475,y:325,
+   summary:"The three zones of nervous system arousal — Ventral Vagal (safe), Hyper-arousal (too activated), and Hypo-arousal (too shut down).",
+   content:"From Polyvagal Theory (Stephen Porges), the nervous system cycles between three states:\n\n**Ventral Vagal — Safe and Social**\nFeel connected, calm, curious, open. Social engagement is easy. This is the window of tolerance.\n\n**Hyper-arousal (Fight/Flight)**\nNervous system is activated: racing thoughts, heart pounding, irritability, difficulty sitting still. The body is preparing for action.\n\n**Hypo-arousal (Freeze/Collapse)**\nShutdown, numbness, disconnection, heaviness, foggy thinking. The body has moved past activation into conservation mode.\n\nHealing involves expanding the window of tolerance — the range where we can feel and function without tipping into over- or under-activation.\n\nSkills like grounding, breathing, and somatic work help regulate between states.",
+   links:["somatic","grounding","breathing","trauma","mindfulness","distress-tol-concept"]},
+
+  {id:"mindfulness-meditation", label:"Mindfulness\nmeditation", type:"skill", x:570,y:220,
+   summary:"Formal practice of sitting with present-moment awareness — training the mind's capacity to notice and return.",
+   content:"Mindfulness meditation is the formal practice that builds the informal capacity used in daily life.\n\nCore technique: choose an anchor (breath, body, sound), rest attention there, notice when the mind wanders, return without judgment. That return — over and over — is the practice.\n\nResearch-backed benefits: reduces cortisol, grows prefrontal cortex grey matter, improves emotional regulation, reduces rumination.\n\n**Formats:**\n• Focused attention — concentration on one object\n• Open monitoring — observing whatever arises\n• Loving-kindness (Metta) — cultivating goodwill toward self and others\n• Body scan — systematic somatic awareness\n\nEven 10 minutes daily produces measurable change within 8 weeks.",
+   links:["mindfulness","body-scan","breathing","rain-method","rumination","anxiety"]},
+
+  {id:"exposure-therapy", label:"Exposure\ntherapy", type:"skill", x:238,y:280,
+   summary:"Gradually and systematically facing feared situations to reduce avoidance and build tolerance.",
+   content:"Exposure therapy is one of the most evidence-based interventions for anxiety, phobias, OCD, and PTSD.\n\nThe mechanism: avoidance maintains fear. Exposure breaks the cycle by teaching the nervous system that the feared thing is survivable — and that anxiety naturally peaks and then decreases on its own.\n\n**Types:**\n• Graded exposure — building a fear hierarchy from least to most feared, working up gradually\n• Imaginal exposure — vividly imagining feared scenarios (used when direct exposure isn't possible)\n• Interoceptive exposure — deliberately inducing feared physical sensations (for panic disorder)\n• In vivo — direct contact with the feared situation or object\n\nKey principle: stay in the situation long enough for anxiety to decrease on its own — leaving early reinforces the fear.",
+   links:["anxiety","social","trauma","distress-tol","willingness","cbt"]},
+
+  {id:"rain-method",   label:"RAIN method", type:"skill", x:570,y:420,
+   summary:"A four-step mindfulness practice for working with difficult emotions: Recognize, Allow, Investigate, Nurture.",
+   content:"RAIN is a meditation practice developed by Michele McDonald and popularized by Tara Brach for working with difficult emotions in real time.\n\n**R — Recognize**\nName what's happening: 'This is anxiety.' 'This is grief.' Naming activates the prefrontal cortex and reduces amygdala reactivity.\n\n**A — Allow**\nLet it be here without trying to fix, fight, or flee. Not approval — just acknowledgment that this is happening right now.\n\n**I — Investigate**\nWith gentle curiosity, explore the experience: Where is it in the body? What does it believe? What does it need? This is different from analysis — it's a felt inquiry.\n\n**N — Nurture**\nOffer yourself what you'd offer a friend in pain: warmth, compassion, a hand on the heart. Self-compassion applied directly to what was found.\n\nAfter RAIN: notice what's here after the practice — often a sense of more space and ease.",
+   links:["mindfulness","mindfulness-meditation","self-compassion","primary-emotion","willingness","body-scan"]},
 ];
 
 // ── Canvas bounds, derived from actual node positions ──────────────────────
@@ -809,6 +854,26 @@ const EDGES = [
   ["distress-tol","anxiety"],["distress-tol","social"],["distress-tol","low-mood"],
   ["distress-tol","relationships"],["distress-tol","trauma"],["distress-tol","self-worth"],
   ["grounding","breathing"],
+  // New node edges
+  ["monkey-brain","mindfulness"],["monkey-brain","defusion"],["monkey-brain","rumination"],
+  ["monkey-brain","rain-method"],["monkey-brain","mindfulness-meditation"],
+  ["primary-emotion","secondary-emotion"],["primary-emotion","emotion-reg"],
+  ["primary-emotion","self-compassion"],["primary-emotion","willingness"],
+  ["secondary-emotion","emotion-reg"],["secondary-emotion","rumination"],["secondary-emotion","defusion"],
+  ["willingness","act"],["willingness","defusion"],["willingness","mindfulness"],["willingness","distress-tol"],
+  ["distress-tol-concept","willingness"],["distress-tol-concept","emotion-reg"],
+  ["distress-tol-concept","emotional-states"],["distress-tol-concept","distress-tol"],
+  ["distress-tol-concept","trauma"],
+  ["emotional-states","somatic"],["emotional-states","grounding"],["emotional-states","breathing"],
+  ["emotional-states","trauma"],["emotional-states","mindfulness"],
+  ["mindfulness-meditation","mindfulness"],["mindfulness-meditation","body-scan"],
+  ["mindfulness-meditation","breathing"],["mindfulness-meditation","rain-method"],
+  ["mindfulness-meditation","rumination"],["mindfulness-meditation","anxiety"],
+  ["exposure-therapy","anxiety"],["exposure-therapy","social"],["exposure-therapy","trauma"],
+  ["exposure-therapy","distress-tol"],["exposure-therapy","willingness"],["exposure-therapy","cbt"],
+  ["rain-method","mindfulness"],["rain-method","mindfulness-meditation"],
+  ["rain-method","self-compassion"],["rain-method","primary-emotion"],
+  ["rain-method","willingness"],["rain-method","body-scan"],
 ];
 
 const LEGEND = [
