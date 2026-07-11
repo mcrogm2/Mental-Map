@@ -3884,6 +3884,10 @@ export default function WhatsTherapy() {
   const [authorMapStepNotes, setAuthorMapStepNotes] = useState({});
 
   const authorMapViewSourceRef = useRef("authorMaps"); // "authorMaps" | "patient"
+  const authorMapIdRef = useRef(null);
+
+  // Keep authorMapIdRef in sync
+  useEffect(() => { authorMapIdRef.current = authorMapId; }, [authorMapId]);
   const [authorMapEditing, setAuthorMapEditing] = useState(false);
   const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
   const [authorMapId, setAuthorMapId] = useState(null);
@@ -3894,7 +3898,7 @@ export default function WhatsTherapy() {
   // handlers (memoized with empty deps) can read the latest values without
   // stale closure issues — avoiding the "cannot access before init" crash
   // that useCallback+ref ordering caused when minified by Vite.
-  const positionOverlayRef = useRef({ explore: {}, maps: {} });
+  const positionOverlayRef = useRef({ explore: {}, maps: {}, authorMaps: {} });
   const appModeRef = useRef("landing");
   const currentProcessIdRef = useRef(null);
 
@@ -3909,6 +3913,8 @@ export default function WhatsTherapy() {
     const pid = currentProcessIdRef.current;
     if (mode === "myMap" && pid && overlay.maps[pid]?.[id]) return overlay.maps[pid][id];
     if (mode === "explore" && overlay.explore[id]) return overlay.explore[id];
+    if (mode === "authorMapView" && authorMapIdRef.current && overlay.authorMaps[authorMapIdRef.current]?.[id])
+      return overlay.authorMaps[authorMapIdRef.current][id];
     return BASE_POSITIONS[id] || { x: 0, y: 0 };
   }
 
@@ -4055,7 +4061,8 @@ export default function WhatsTherapy() {
   const handleChoosePatient = () => { if (!session) { setAppMode("signin"); return; } setAppMode("patient"); };
 
   // Opens an author map on the canvas in read-only view
-  const openAuthorMapView = useCallback((map, steps) => {
+  // Loads saved node positions from author_map_node_positions if available
+  const openAuthorMapView = useCallback(async (map, steps) => {
     setAuthorMapTitle(map.title);
     setAuthorMapId(map.id);
     setAuthorMapIds(new Set(steps.map(s => s.node_id)));
@@ -4064,8 +4071,44 @@ export default function WhatsTherapy() {
     setAuthorMapStepNotes(notes);
     setAuthorMapEditing(false);
     authorMapViewSourceRef.current = "authorMaps";
+
+    // Load saved positions and apply to overlay before switching mode
+    const { data: positions } = await supabase
+      .from("author_map_node_positions")
+      .select("node_id, x, y")
+      .eq("map_id", map.id);
+
+    if (positions?.length > 0) {
+      if (!positionOverlayRef.current.authorMaps) positionOverlayRef.current.authorMaps = {};
+      if (!positionOverlayRef.current.authorMaps[map.id]) positionOverlayRef.current.authorMaps[map.id] = {};
+      positions.forEach(p => {
+        positionOverlayRef.current.authorMaps[map.id][p.node_id] = { x: p.x, y: p.y };
+      });
+    }
+
     setAppMode("authorMapView");
   }, []);
+
+  // Saves current author map node positions to Supabase
+  const saveAuthorMapPositions = useCallback(async (mapId) => {
+    if (!session || !mapId) return;
+    const overlay = positionOverlayRef.current.authorMaps?.[mapId];
+    if (!overlay || Object.keys(overlay).length === 0) return;
+
+    const rows = Object.entries(overlay).map(([node_id, pos]) => ({
+      map_id: mapId,
+      node_id,
+      x: pos.x,
+      y: pos.y,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from("author_map_node_positions")
+      .upsert(rows, { onConflict: "map_id,node_id" });
+
+    if (error) console.error("Failed to save author map positions:", error.message);
+  }, [session]);
   const handleChooseMyMap = () => {
     if (!session) { setAppMode("signin"); return; }
     setAppMode(processes.length > 0 ? "myMap" : "questionnaire");
@@ -4580,7 +4623,11 @@ export default function WhatsTherapy() {
       if (drag && drag.moved) {
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
         const pid = currentProcessIdRef.current;
-        if (pid) {
+        const amid = authorMapIdRef.current;
+        if (appModeRef.current === "authorMapView" && amid) {
+          if (!positionOverlayRef.current.authorMaps[amid]) positionOverlayRef.current.authorMaps[amid] = {};
+          positionOverlayRef.current.authorMaps[amid][drag.id] = newPos;
+        } else if (pid) {
           if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
           positionOverlayRef.current.maps[pid][drag.id] = newPos;
         } else {
@@ -4641,7 +4688,11 @@ export default function WhatsTherapy() {
       if (drag && drag.moved) {
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
         const pid = currentProcessIdRef.current;
-        if (pid) {
+        const amid = authorMapIdRef.current;
+        if (appModeRef.current === "authorMapView" && amid) {
+          if (!positionOverlayRef.current.authorMaps[amid]) positionOverlayRef.current.authorMaps[amid] = {};
+          positionOverlayRef.current.authorMaps[amid][drag.id] = newPos;
+        } else if (pid) {
           if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
           positionOverlayRef.current.maps[pid][drag.id] = newPos;
         } else {
@@ -4985,7 +5036,12 @@ export default function WhatsTherapy() {
       setFilterIds(new Set());
       applyFilterAnimation(new Set(), false);
     } else if (appMode === "authorMapView") {
-      animator.init(NODES, NODE_SIZES, (id) => BASE_POSITIONS[id] || { x: 0, y: 0 });
+      animator.init(NODES, NODE_SIZES, (id) => {
+        const amid = authorMapIdRef.current;
+        return (amid && positionOverlayRef.current.authorMaps[amid]?.[id])
+          ? positionOverlayRef.current.authorMaps[amid][id]
+          : BASE_POSITIONS[id] || { x: 0, y: 0 };
+      });
       filterIdsRef.current = authorMapIds;
       setFilterIds(authorMapIds);
       applyFilterAnimation(authorMapIds, true);
@@ -5685,13 +5741,17 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                   <span style={{fontSize:12,color:"#64748b"}}>
                     {authorMapEditSteps.length} step{authorMapEditSteps.length===1?"":"s"}
                   </span>
+                  <button onClick={()=>saveAuthorMapPositions(authorMapId)}
+                    style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:20,color:"#fbbf24",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit"}}>
+                    💾 Save positions
+                  </button>
                   <button onClick={()=>setAuthorMapEditing(false)}
                     style={{background:"none",border:"1px solid #374151",borderRadius:20,color:"#94a3b8",fontSize:12,fontWeight:600,padding:"5px 14px",cursor:"pointer",fontFamily:"inherit"}}>
                     Cancel
                   </button>
                   <button onClick={finishAuthorMapEdit}
                     style={{background:"#fbbf24",border:"none",borderRadius:20,color:"#1a0a00",fontSize:12,fontWeight:700,padding:"5px 16px",cursor:"pointer",fontFamily:"inherit"}}>
-                    Save
+                    Save steps
                   </button>
                 </>
               ) : (
