@@ -3883,8 +3883,10 @@ export default function WhatsTherapy() {
   const [authorMapIds, setAuthorMapIds] = useState(() => new Set());
   const [authorMapStepNotes, setAuthorMapStepNotes] = useState({});
 
-  const authorMapViewSourceRef = useRef("authorMaps"); // "authorMaps" | "patient"
+  const authorMapViewSourceRef = useRef("authorMaps");
   const authorMapIdRef = useRef(null);
+  const authorMapEditingRef = useRef(false);
+  const handleAuthorMapNodeTapRef = useRef(null);
 
   const [authorMapEditing, setAuthorMapEditing] = useState(false);
   const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
@@ -3892,6 +3894,7 @@ export default function WhatsTherapy() {
 
   // Keep authorMapIdRef in sync — must be after authorMapId declaration
   useEffect(() => { authorMapIdRef.current = authorMapId; }, [authorMapId]);
+  useEffect(() => { authorMapEditingRef.current = authorMapEditing; }, [authorMapEditing]);
 
   // ── Per-mode position overlay ──────────────────────────────────────────────
   // Stores drag overrides per mode/map so positions never bleed across contexts.
@@ -4635,7 +4638,12 @@ export default function WhatsTherapy() {
           positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
-        selectNodeRef.current && selectNodeRef.current(drag.id);
+        // In author map edit mode, tap toggles node add/remove
+        if (appModeRef.current === "authorMapView" && authorMapEditingRef.current) {
+          handleAuthorMapNodeTapRef.current && handleAuthorMapNodeTapRef.current(drag.id);
+        } else {
+          selectNodeRef.current && selectNodeRef.current(drag.id);
+        }
       }
       dragNodeRef.current = null;
     };
@@ -4700,7 +4708,11 @@ export default function WhatsTherapy() {
           positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
-        selectNodeRef.current && selectNodeRef.current(drag.id);
+        if (appModeRef.current === "authorMapView" && authorMapEditingRef.current) {
+          handleAuthorMapNodeTapRef.current && handleAuthorMapNodeTapRef.current(drag.id);
+        } else {
+          selectNodeRef.current && selectNodeRef.current(drag.id);
+        }
       }
       dragNodeRef.current = null;
     };
@@ -4940,6 +4952,9 @@ export default function WhatsTherapy() {
       return [...prev, { nodeId, summary: "" }];
     });
   }, []);
+
+  // Keep ref in sync so memoized drag handlers always call latest version
+  useEffect(() => { handleAuthorMapNodeTapRef.current = handleAuthorMapNodeTap; }, [handleAuthorMapNodeTap]);
 
   const handleAuthorMapStepNote = useCallback((nodeId, summary) => {
     setAuthorMapEditSteps(prev => prev.map(s => s.nodeId === nodeId ? { ...s, summary } : s));
@@ -6042,15 +6057,13 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <g key={n.id}
                   transform={`translate(${nx},${ny})`}
                   opacity={op}
-                  style={{cursor: (isBuilder || isAuthorEdit) ? "pointer" : (op < 0.05 ? "default" : "grab")}}
+                  style={{cursor: isBuilder ? "pointer" : (op < 0.05 ? "default" : "grab")}}
                   onMouseDown={e => {
                     if (isBuilder) { e.stopPropagation(); handleBuilderNodeTap(n.id); }
-                    else if (isAuthorEdit) { e.stopPropagation(); handleAuthorMapNodeTap(n.id); }
                     else { op > 0.05 && onNodeMouseDown(e, n.id); }
                   }}
                   onTouchStart={e => {
                     if (isBuilder) { e.stopPropagation(); e.preventDefault(); handleBuilderNodeTap(n.id); }
-                    else if (isAuthorEdit) { e.stopPropagation(); e.preventDefault(); handleAuthorMapNodeTap(n.id); }
                     else { op > 0.05 && onNodeTouchStart(e, n.id); }
                   }}
                   onMouseEnter={e => {
