@@ -3153,7 +3153,7 @@ function AuthorMapsScreen({ onBack, onCopy, onView, isAuthor, session }) {
 // the SAME seed-set shape the Filter feature already consumes downstream
 // (computeMultiClusterSizes / computeMultiGatheredPositions / multiConnectedSet),
 // so the actual map-building logic needs no changes at all.
-function Questionnaire({ onComplete, onCancel }) {
+function Questionnaire({ onComplete, onCancel, onSkip }) {
   const [step, setStep] = useState(0); // 0 = challenges, 1 = concepts/skills
   const [challengeIds, setChallengeIds] = useState(() => new Set());
   const [helpIds, setHelpIds] = useState(() => new Set());
@@ -3175,7 +3175,7 @@ function Questionnaire({ onComplete, onCancel }) {
   };
   const toggleNa = () => {
     setNa(prev => !prev);
-    setHelpIds(new Set()); // N/A and specific picks are mutually exclusive
+    setHelpIds(new Set());
   };
 
   const finish = () => {
@@ -3212,6 +3212,10 @@ function Questionnaire({ onComplete, onCancel }) {
               style={{marginTop:18,width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"10px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               Next
             </button>
+            <button onClick={onSkip}
+              style={{marginTop:10,width:"100%",background:"none",border:"none",color:"#475569",fontSize:12.5,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>
+              Skip — just open a blank map
+            </button>
           </>
         )}
 
@@ -3234,6 +3238,10 @@ function Questionnaire({ onComplete, onCancel }) {
             <button onClick={finish}
               style={{marginTop:18,width:"100%",background:"#7F77DD",color:"#0A0C1A",border:"none",borderRadius:8,padding:"10px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               Build my map
+            </button>
+            <button onClick={onSkip}
+              style={{marginTop:10,width:"100%",background:"none",border:"none",color:"#475569",fontSize:12.5,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>
+              Skip — just open a blank map
             </button>
           </>
         )}
@@ -4137,6 +4145,24 @@ export default function WhatsTherapy() {
     setAppMode("myMap");
   };
   const handleQuestionnaireCancel = () => setAppMode("landing");
+
+  const handleQuestionnaireSkip = async () => {
+    if (!session) return;
+    const { data, error } = await supabase
+      .from("processes")
+      .insert({ owner_id: session.user.id, title: "My Map" })
+      .select("id, title")
+      .single();
+    if (error) { console.error("Failed to create blank map:", error.message); return; }
+    setProcesses(prev => [...prev, data]);
+    locallyKnownProcessIdRef.current = data.id;
+    setCurrentProcessId(data.id);
+    setMyMapIds(new Set());
+    setMyMapStepNotes({});
+    setMyMapStepOrder({});
+    setMyMapLoaded(true);
+    setAppMode("myMap");
+  };
   const handleSignOut = () => { supabase.auth.signOut(); };
 
   const [breadcrumb, setBreadcrumb] = useState([]);
@@ -4753,9 +4779,16 @@ export default function WhatsTherapy() {
     // intersection at all. Only the clicked node's highlight changes.
     let cluster;
     if (appMode === "myMap" || appMode === "authorMapView") {
-      // Never expand neighbors in a built map — show exactly the nodes in the map
-      cluster = new Set(filterIdsRef.current);
-      cluster.add(id);
+      // Never expand neighbors in a built map
+      // If map has no steps (empty filter), fall through to normal explore behavior
+      if (filterIdsRef.current.size > 0) {
+        cluster = new Set(filterIdsRef.current);
+        cluster.add(id);
+      } else {
+        // No steps — treat like explore, show neighborhood
+        cluster = new Set([id]);
+        EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
+      }
     } else {
       cluster = new Set([id]);
       EDGES.forEach(([a,b]) => { if(a===id) cluster.add(b); if(b===id) cluster.add(a); });
@@ -4953,8 +4986,9 @@ export default function WhatsTherapy() {
       summary: authorMapStepNotes[id] || "",
     }));
     setAuthorMapEditSteps(steps);
+    clearAll();
     setAuthorMapEditing(true);
-  }, [authorMapIds, authorMapStepNotes]);
+  }, [authorMapIds, authorMapStepNotes, clearAll]);
 
   const handleAuthorMapNodeTap = useCallback((nodeId) => {
     setAuthorMapEditSteps(prev => {
@@ -5246,13 +5280,11 @@ export default function WhatsTherapy() {
     setBuilderDescNodeId(null);
     setBuilderShowDoneModal(false);
     setBuilderEditingProcessId(null);
+    // Reset any lingering selection state so builder starts clean
+    clearAll();
     setAppMode("builder");
-  }, []);
+  }, [clearAll]);
 
-  // Re-enter the builder for the map currently open in My Map, pre-filled
-  // with its existing steps (in their saved order) and notes, so someone can
-  // add, remove, or reorder-by-rebuilding rather than only ever creating
-  // something new.
   const startEditProcessBuilder = useCallback(() => {
     if (!currentProcessId) return;
     const existing = [...myMapIds].map(nodeId => ({ nodeId, summary: myMapStepNotes[nodeId] || "" }));
@@ -5260,8 +5292,10 @@ export default function WhatsTherapy() {
     setBuilderDescNodeId(null);
     setBuilderShowDoneModal(false);
     setBuilderEditingProcessId(currentProcessId);
+    // Reset any lingering selection state so builder starts clean
+    clearAll();
     setAppMode("builder");
-  }, [currentProcessId, myMapIds, myMapStepNotes]);
+  }, [currentProcessId, myMapIds, myMapStepNotes, clearAll]);
 
   // Three-way tap rule, exactly as specified:
   //  - not yet selected      -> add as next step, open its description popover
@@ -5687,6 +5721,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
         <Questionnaire
           onComplete={handleQuestionnaireComplete}
           onCancel={handleQuestionnaireCancel}
+          onSkip={handleQuestionnaireSkip}
         />
       )}
 
