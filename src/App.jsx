@@ -2313,6 +2313,35 @@ function EntryScreen({ onSignIn, onExplore }) {
 }
 
 
+function GemTwinkle({ color = "#e2e8f0", delay = "0s" }) {
+  return (
+    <div style={{position:"absolute", top:10, right:10, width:18, height:18, pointerEvents:"none"}}>
+      <svg viewBox="0 0 18 18" style={{
+        width:18, height:18,
+        animation:`gemSpin 3s ease-in-out infinite`,
+        animationDelay: delay,
+      }}>
+        {/* Four-point starburst like a gem sparkle */}
+        <line x1="9" y1="1" x2="9" y2="17" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.9"/>
+        <line x1="1" y1="9" x2="17" y2="9" stroke={color} strokeWidth="1.5" strokeLinecap="round" opacity="0.9"/>
+        <line x1="3" y1="3" x2="15" y2="15" stroke={color} strokeWidth="0.8" strokeLinecap="round" opacity="0.5"/>
+        <line x1="15" y1="3" x2="3" y2="15" stroke={color} strokeWidth="0.8" strokeLinecap="round" opacity="0.5"/>
+        <circle cx="9" cy="9" r="1.5" fill={color} opacity="0.9"/>
+      </svg>
+      <style>{`
+        @keyframes gemSpin {
+          0%   { opacity:0; transform: scale(0.4) rotate(0deg); }
+          15%  { opacity:1; transform: scale(1.1) rotate(15deg); }
+          30%  { opacity:0.8; transform: scale(0.9) rotate(-5deg); }
+          45%  { opacity:1; transform: scale(1) rotate(0deg); }
+          60%  { opacity:0; transform: scale(0.5) rotate(20deg); }
+          100% { opacity:0; transform: scale(0.4) rotate(0deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAuthorMaps, onChooseProvider, onChoosePatient, onChooseProfile, onSignOut, session, userName }) {
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:24,textAlign:"center"}}>
@@ -2326,7 +2355,8 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
       <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%",maxWidth:440,padding:"0 4px"}}>
         <div style={{display:"flex",gap:10}}>
           <button onClick={onChooseExplore}
-            style={{background:"#11142A",border:"1px solid #232752",borderRadius:16,padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",flex:"1 1 0",minWidth:0,textAlign:"left"}}>
+            style={{position:"relative",background:"#11142A",border:"1px solid #232752",borderRadius:16,padding:"18px 16px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",flex:"1 1 0",minWidth:0,textAlign:"left",overflow:"hidden"}}>
+            <GemTwinkle color="#94a3b8" delay="0s" />
             <div style={{fontSize:16,fontWeight:600,marginBottom:6}}>Explore</div>
             <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5}}>
               Browse the full map of therapy modalities, concepts, challenges, and skills.
@@ -2343,7 +2373,8 @@ function LandingScreen({ hasMyMap, onChooseExplore, onChooseMyMap, onChooseAutho
         </div>
 
         <button onClick={onChooseAuthorMaps}
-          style={{background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:16,padding:"16px 18px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",width:"100%",textAlign:"left",display:"flex",alignItems:"center",gap:14}}>
+          style={{position:"relative",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.35)",borderRadius:16,padding:"16px 18px",cursor:"pointer",fontFamily:"inherit",color:"#e2e8f0",width:"100%",textAlign:"left",display:"flex",alignItems:"center",gap:14,overflow:"hidden"}}>
+          <GemTwinkle color="#fbbf24" delay="1.2s" />
           <div style={{fontSize:22}}>✦</div>
           <div>
             <div style={{fontSize:15,fontWeight:600,marginBottom:3}}>Author's Maps</div>
