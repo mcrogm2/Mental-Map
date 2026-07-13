@@ -4624,9 +4624,12 @@ export default function WhatsTherapy() {
       id, startClientX, startClientY,
       startX: node.x, startY: node.y, moved: false, longPressed: false,
     };
-    const longPressTimer = setTimeout(() => {
+    // Skip long press in builder/authorEdit — tap = toggle, drag = move
+    const isEditMode = appModeRef.current === "builder" ||
+      (appModeRef.current === "authorMapView" && authorMapEditingRef.current);
+    const longPressTimer = isEditMode ? null : setTimeout(() => {
       const drag = dragNodeRef.current;
-      if (!drag || drag.moved) return; // already a drag — not a hold
+      if (!drag || drag.moved) return;
       drag.longPressed = true;
       onNodeLongPress(id, startClientX, startClientY);
     }, LONG_PRESS_MS);
@@ -4692,7 +4695,9 @@ export default function WhatsTherapy() {
       id, startClientX, startClientY,
       startX: node.x, startY: node.y, moved: false, longPressed: false,
     };
-    const longPressTimer = setTimeout(() => {
+    const isEditMode = appModeRef.current === "builder" ||
+      (appModeRef.current === "authorMapView" && authorMapEditingRef.current);
+    const longPressTimer = isEditMode ? null : setTimeout(() => {
       const drag = dragNodeRef.current;
       if (!drag || drag.moved) return;
       drag.longPressed = true;
@@ -6028,7 +6033,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
             })}
 
             {/* Process flow */}
-            {(appMode === "myMap" || appMode === "authorMapView") && (() => {
+            {(appMode === "myMap" || (appMode === "authorMapView" && !authorMapEditing)) && (() => {
               const orderedIds = appMode === "myMap" ? myMapOrderedIds : authorMapOrderedIds;
               if (orderedIds.length < 2) return null;
               return orderedIds.map((nodeId, i) => {
@@ -6044,7 +6049,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 );
               });
             })()}
-            {(appMode === "myMap" || appMode === "authorMapView") && (() => {
+            {(appMode === "myMap" || (appMode === "authorMapView" && !authorMapEditing)) && (() => {
               const orderedIds = appMode === "myMap" ? myMapOrderedIds : authorMapOrderedIds;
               if (orderedIds.length < 2) return null;
               const { segmentIndex, localT } = processFlow.getPosition();
