@@ -4652,15 +4652,16 @@ export default function WhatsTherapy() {
       window.removeEventListener("mouseup", onUp);
       if (drag && drag.moved) {
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
+        const mode = appModeRef.current;
         const pid = currentProcessIdRef.current;
         const amid = authorMapIdRef.current;
-        if (appModeRef.current === "authorMapView" && amid) {
+        if (mode === "authorMapView" && amid) {
           if (!positionOverlayRef.current.authorMaps[amid]) positionOverlayRef.current.authorMaps[amid] = {};
           positionOverlayRef.current.authorMaps[amid][drag.id] = newPos;
-        } else if (pid) {
+        } else if (mode === "myMap" && pid) {
           if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
           positionOverlayRef.current.maps[pid][drag.id] = newPos;
-        } else {
+        } else if (mode === "explore") {
           positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
@@ -4722,15 +4723,16 @@ export default function WhatsTherapy() {
       window.removeEventListener("touchend", onEnd);
       if (drag && drag.moved) {
         const newPos = { x: animator.current[drag.id].x, y: animator.current[drag.id].y };
+        const mode = appModeRef.current;
         const pid = currentProcessIdRef.current;
         const amid = authorMapIdRef.current;
-        if (appModeRef.current === "authorMapView" && amid) {
+        if (mode === "authorMapView" && amid) {
           if (!positionOverlayRef.current.authorMaps[amid]) positionOverlayRef.current.authorMaps[amid] = {};
           positionOverlayRef.current.authorMaps[amid][drag.id] = newPos;
-        } else if (pid) {
+        } else if (mode === "myMap" && pid) {
           if (!positionOverlayRef.current.maps[pid]) positionOverlayRef.current.maps[pid] = {};
           positionOverlayRef.current.maps[pid][drag.id] = newPos;
-        } else {
+        } else if (mode === "explore") {
           positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
