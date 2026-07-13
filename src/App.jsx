@@ -6308,38 +6308,17 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               userSelect: "none",
             }}
           >
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              padding: "10px 0",
-            }}>
-              <span style={{
-                fontSize: 18,
-                color: "#7F77DD",
-                animation: "peekPulse 1.4s ease-in-out infinite",
-                display: "block",
-                lineHeight: 1,
-              }}>‹</span>
-              {[0,1,2].map(i => (
-                <div key={i} style={{
-                  width: 4, height: 4, borderRadius: "50%",
-                  background: "#7F77DD",
-                  animation: "peekDot 1.4s ease-in-out infinite",
-                  animationDelay: `${i * 0.18}s`,
-                }}/>
-              ))}
-            </div>
+            <span style={{
+              fontSize: 20,
+              color: "#7F77DD",
+              animation: "peekPulse 1.4s ease-in-out infinite",
+              display: "block",
+              lineHeight: 1,
+            }}>‹</span>
             <style>{`
               @keyframes peekPulse {
                 0%, 100% { opacity: 0.4; text-shadow: 0 0 4px #7F77DD; transform: translateX(0); }
                 50% { opacity: 1; text-shadow: 0 0 12px #7F77DD, 0 0 24px rgba(127,119,221,0.6); transform: translateX(-2px); }
-              }
-              @keyframes peekDot {
-                0%, 100% { opacity: 0.3; box-shadow: 0 0 3px #7F77DD; transform: scale(1); }
-                50% { opacity: 1; box-shadow: 0 0 8px #7F77DD, 0 0 16px rgba(127,119,221,0.5); transform: scale(1.4); }
               }
             `}</style>
           </div>
