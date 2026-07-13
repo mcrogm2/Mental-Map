@@ -4874,17 +4874,26 @@ export default function WhatsTherapy() {
   const filterTimerRef = useRef(null);
   const filterIdsRef = useRef(new Set());
 
-  const applyFilterAnimation = useCallback((idsSet, exactOnly = false) => {
+  const applyFilterAnimation = useCallback((idsSet, exactOnly = false, forceMode = null) => {
     selectionTimersRef.current.forEach(t => clearTimeout(t));
     selectionTimersRef.current = [];
 
+    // Use forceMode if provided (during mode transitions where appModeRef may be stale)
+    const effectiveMode = forceMode || appModeRef.current;
+    const getPos = (id) => {
+      const overlay = positionOverlayRef.current;
+      const pid = currentProcessIdRef.current;
+      const amid = authorMapIdRef.current;
+      if (effectiveMode === "myMap" && pid && overlay.maps[pid]?.[id]) return overlay.maps[pid][id];
+      if (effectiveMode === "explore" && overlay.explore[id]) return overlay.explore[id];
+      if (effectiveMode === "authorMapView" && amid && overlay.authorMaps[amid]?.[id]) return overlay.authorMaps[amid][id];
+      return BASE_POSITIONS[id] || { x: 0, y: 0 };
+    };
+
     if (idsSet.size === 0) {
-      // Back to the full map — same reset path as clearAll, minus the
-      // selection-specific state (breadcrumb, panel, insight, etc.) since
-      // filtering doesn't touch single-node selection state at all.
       const reset = {};
       NODES.forEach(n => {
-        const p = getNodePos(n.id);
+        const p = getPos(n.id);
         reset[n.id] = { opacity:1, radius: NODE_SIZES[n.id] ?? 22, glow:0, pulse:0, x:p.x, y:p.y };
       });
       animator.setTargets(reset);
@@ -4892,16 +4901,8 @@ export default function WhatsTherapy() {
       return;
     }
 
-    // My Map (exactOnly=true): a deliberately built process should show
-    // EXACTLY the chosen nodes — no automatic neighbor expansion. The
-    // Filter widget in Explore (exactOnly=false, the default) keeps its
-    // original behavior of also revealing each chosen node's direct
-    // connections, which is correct there (the point of filtering to
-    // "Anxiety" is seeing its whole neighborhood) but wrong for a map
-    // someone hand-picked node by node.
     const cluster = exactOnly ? new Set(idsSet) : multiConnectedSet(idsSet);
 
-    // Stage 1 (0ms): fade non-matching, illuminate matching
     const fade = {};
     NODES.forEach(n => {
       fade[n.id] = {
@@ -4912,26 +4913,24 @@ export default function WhatsTherapy() {
     });
     animator.setTargets(fade);
 
-    // Stage 2 (160ms): rescale + gather
     selectionTimersRef.current.push(setTimeout(() => {
       const clusterSizes = exactOnly
         ? Object.fromEntries(NODES.map(n => [n.id, cluster.has(n.id) ? (NODE_SIZES[n.id] ?? 22) : (DEGREE_RANGES[n.type]?.min ?? 14)]))
         : computeMultiClusterSizes(idsSet, NODES, EDGES, DEGREE_RANGES);
-      const gatheredPos  = exactOnly
-        ? Object.fromEntries(NODES.map(n => [n.id, getNodePos(n.id)]))
+      const gatheredPos = exactOnly
+        ? Object.fromEntries(NODES.map(n => [n.id, getPos(n.id)]))
         : computeMultiGatheredPositions(idsSet, NODES, EDGES);
       const resize = {};
       NODES.forEach(n => {
         resize[n.id] = {
           radius: clusterSizes[n.id],
-          x: gatheredPos[n.id]?.x ?? getNodePos(n.id).x,
-          y: gatheredPos[n.id]?.y ?? getNodePos(n.id).y,
+          x: gatheredPos[n.id]?.x ?? getPos(n.id).x,
+          y: gatheredPos[n.id]?.y ?? getPos(n.id).y,
         };
       });
       animator.setTargets(resize);
     }, 160));
 
-    // Stage 3 (260ms): recenter viewbox to the filtered cluster
     selectionTimersRef.current.push(setTimeout(() => recenterToCluster(cluster), 260));
   }, [resetViewBox, recenterToCluster]);
 
@@ -4955,7 +4954,7 @@ export default function WhatsTherapy() {
       // filtered view, not the full unfiltered map. exactOnly matches
       // whichever mode we're actually in: My Map shows exactly its chosen
       // nodes, Explore's Filter widget still expands to neighbors.
-      applyFilterAnimation(filterIdsRef.current, appMode === "myMap" || appMode === "authorMapView");
+      applyFilterAnimation(filterIdsRef.current, appMode === "myMap" || appMode === "authorMapView", appMode);
       return;
     }
 
@@ -5090,12 +5089,12 @@ export default function WhatsTherapy() {
       });
       filterIdsRef.current = myMapIds;
       setFilterIds(myMapIds);
-      applyFilterAnimation(myMapIds, true);
+      applyFilterAnimation(myMapIds, true, "myMap");
     } else if (appMode === "explore") {
       animator.init(NODES, NODE_SIZES, (id) => positionOverlayRef.current.explore[id] || BASE_POSITIONS[id] || { x: 0, y: 0 });
       filterIdsRef.current = new Set();
       setFilterIds(new Set());
-      applyFilterAnimation(new Set(), false);
+      applyFilterAnimation(new Set(), false, "explore");
     } else if (appMode === "authorMapView") {
       animator.init(NODES, NODE_SIZES, (id) => {
         const amid = authorMapIdRef.current;
@@ -5105,7 +5104,7 @@ export default function WhatsTherapy() {
       });
       filterIdsRef.current = authorMapIds;
       setFilterIds(authorMapIds);
-      applyFilterAnimation(authorMapIds, true);
+      applyFilterAnimation(authorMapIds, true, "authorMapView");
     }
   }, [appMode, myMapIds, authorMapIds, applyFilterAnimation]);
 
