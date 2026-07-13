@@ -3895,6 +3895,7 @@ export default function WhatsTherapy() {
   const authorMapIdRef = useRef(null);
   const authorMapEditingRef = useRef(false);
   const handleAuthorMapNodeTapRef = useRef(null);
+  const handleBuilderNodeTapRef = useRef(null);
 
   const [authorMapEditing, setAuthorMapEditing] = useState(false);
   const [authorMapEditSteps, setAuthorMapEditSteps] = useState([]);
@@ -4665,8 +4666,9 @@ export default function WhatsTherapy() {
           positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
-        // In author map edit mode, tap toggles node add/remove
-        if (appModeRef.current === "authorMapView" && authorMapEditingRef.current) {
+        if (appModeRef.current === "builder") {
+          handleBuilderNodeTapRef.current && handleBuilderNodeTapRef.current(drag.id);
+        } else if (appModeRef.current === "authorMapView" && authorMapEditingRef.current) {
           handleAuthorMapNodeTapRef.current && handleAuthorMapNodeTapRef.current(drag.id);
         } else {
           selectNodeRef.current && selectNodeRef.current(drag.id);
@@ -4736,7 +4738,9 @@ export default function WhatsTherapy() {
           positionOverlayRef.current.explore[drag.id] = newPos;
         }
       } else if (drag && !drag.longPressed) {
-        if (appModeRef.current === "authorMapView" && authorMapEditingRef.current) {
+        if (appModeRef.current === "builder") {
+          handleBuilderNodeTapRef.current && handleBuilderNodeTapRef.current(drag.id);
+        } else if (appModeRef.current === "authorMapView" && authorMapEditingRef.current) {
           handleAuthorMapNodeTapRef.current && handleAuthorMapNodeTapRef.current(drag.id);
         } else {
           selectNodeRef.current && selectNodeRef.current(drag.id);
@@ -5306,18 +5310,15 @@ export default function WhatsTherapy() {
     setBuilderSteps(prev => {
       const idx = prev.findIndex(s => s.nodeId === nodeId);
       if (idx === -1) {
-        // Not yet selected — add as the next step.
         setBuilderDescNodeId(nodeId);
         return [...prev, { nodeId, summary: "" }];
       }
-      // Already selected (last step or an earlier one) — just reopen its
-      // description popup. Removal is no longer triggered by tapping; it's
-      // now an explicit "Remove node from flow" action inside the popup
-      // itself, so it can never happen by accident.
       setBuilderDescNodeId(nodeId);
       return prev;
     });
   }, []);
+
+  useEffect(() => { handleBuilderNodeTapRef.current = handleBuilderNodeTap; }, [handleBuilderNodeTap]);
 
   const removeBuilderStep = useCallback((nodeId) => {
     setBuilderSteps(prev => prev.filter(s => s.nodeId !== nodeId));
@@ -5962,7 +5963,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 source of truth for cluster identity now. */}
 
             {/* Edges — base purple line + traveling "headlight" overlay from selected node */}
-            {EDGES.map(([a,b],i)=>{
+            {appMode !== "builder" && !(appMode === "authorMapView" && authorMapEditing) && EDGES.map(([a,b],i)=>{
               const na=nodeById(a), nb=nodeById(b); if(!na||!nb) return null;
               const hi = (connected && connected.has(a) && connected.has(b)) || (filterConnected && filterConnected.has(a) && filterConnected.has(b));
               const aAnim = animState?.[a], bAnim = animState?.[b];
@@ -6026,13 +6027,7 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
               );
             })}
 
-            {/* Process flow — a subtle traveling dot along My Map's step
-                sequence (1→2→3→…→loops back to 1). Deliberately separate
-                from the regular EDGES rendering above: these path lines are
-                drawn between CONSECUTIVE STEPS regardless of whether a real
-                graph edge exists between them, since the whole point is a
-                reliable, always-visible path through a hand-built sequence —
-                not a reflection of the underlying node-relationship data. */}
+            {/* Process flow */}
             {(appMode === "myMap" || appMode === "authorMapView") && (() => {
               const orderedIds = appMode === "myMap" ? myMapOrderedIds : authorMapOrderedIds;
               if (orderedIds.length < 2) return null;
@@ -6091,8 +6086,8 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                          : isAuthorEdit ? (authorEditSelected ? 0.7 : 0)
                          : (anim?.glow ?? 0);
               const pulse = (isBuilder || isAuthorEdit) ? 0 : (anim?.pulse ?? 0);
-              const nx   = (isBuilder || isAuthorEdit) ? getNodePos(n.id).x : (anim?.x ?? getNodePos(n.id).x);
-              const ny   = (isBuilder || isAuthorEdit) ? getNodePos(n.id).y : (anim?.y ?? getNodePos(n.id).y);
+              const nx   = (isBuilder || isAuthorEdit) ? (anim?.x ?? getNodePos(n.id).x) : (anim?.x ?? getNodePos(n.id).x);
+              const ny   = (isBuilder || isAuthorEdit) ? (anim?.y ?? getNodePos(n.id).y) : (anim?.y ?? getNodePos(n.id).y);
               const isSel = selected === n.id;
               const lines = n.label.split("\n");
               const fs    = Math.max(8, Math.min(13, 7 + r * 0.19));
@@ -6104,15 +6099,9 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
                 <g key={n.id}
                   transform={`translate(${nx},${ny})`}
                   opacity={op}
-                  style={{cursor: isBuilder ? "pointer" : (op < 0.05 ? "default" : "grab")}}
-                  onMouseDown={e => {
-                    if (isBuilder) { e.stopPropagation(); handleBuilderNodeTap(n.id); }
-                    else { op > 0.05 && onNodeMouseDown(e, n.id); }
-                  }}
-                  onTouchStart={e => {
-                    if (isBuilder) { e.stopPropagation(); e.preventDefault(); handleBuilderNodeTap(n.id); }
-                    else { op > 0.05 && onNodeTouchStart(e, n.id); }
-                  }}
+                  style={{cursor: "grab"}}
+                  onMouseDown={e => { op > 0.05 && onNodeMouseDown(e, n.id); }}
+                  onTouchStart={e => { op > 0.05 && onNodeTouchStart(e, n.id); }}
                   onMouseEnter={e => {
                     if (isBuilder || isAuthorEdit) return;
                     if (op < 0.1) return;
