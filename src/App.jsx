@@ -3584,7 +3584,7 @@ function MyMapsDropdown({ processes, currentProcessId, onSelect, onRename, onDel
         🗂 {current ? current.title : "My Maps"} ▾
       </button>
       {open && (
-        <div style={{position:"fixed",top:64,right:12,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:260,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
+        <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,background:"#0D1024",border:"1px solid #232752",borderRadius:14,width:260,maxWidth:"calc(100vw - 24px)",boxShadow:"0 12px 40px rgba(0,0,0,0.45)",zIndex:40}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px 8px"}}>
             <span style={{fontSize:13,fontWeight:700,color:"#e2e8f0"}}>My Maps</span>
             <button onClick={()=>setOpen(false)} aria-label="Close"
