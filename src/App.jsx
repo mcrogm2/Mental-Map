@@ -6278,9 +6278,21 @@ Tone: warm, grounded, specific. No headers, no bullets. Flowing prose only.`;
           >
             <div style={{display:"flex",flexDirection:"column",gap:3}}>
               {[0,1,2,3].map(i=>(
-                <div key={i} style={{width:3,height:3,borderRadius:"50%",background:"#475569"}}/>
+                <div key={i} style={{
+                  width:3, height:3, borderRadius:"50%",
+                  background:"#7F77DD",
+                  boxShadow:"0 0 4px #7F77DD",
+                  animation:"dotPulse 2s ease-in-out infinite",
+                  animationDelay:`${i * 0.2}s`,
+                }}/>
               ))}
             </div>
+            <style>{`
+              @keyframes dotPulse {
+                0%, 100% { opacity: 0.35; box-shadow: 0 0 3px #7F77DD; }
+                50% { opacity: 1; box-shadow: 0 0 8px #7F77DD, 0 0 14px rgba(127,119,221,0.4); }
+              }
+            `}</style>
           </div>
         )}
 
